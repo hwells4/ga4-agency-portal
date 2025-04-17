@@ -10,6 +10,11 @@ import { NextResponse } from "next/server"
 const isProtectedRoute = createRouteMatcher(["/todo(.*)"])
 
 export default clerkMiddleware(async (auth, req) => {
+  // Allow internal API routes to pass through without Clerk auth
+  if (req.nextUrl.pathname.startsWith('/api/internal')) {
+    return NextResponse.next();
+  }
+
   const { userId, redirectToSignIn } = await auth()
 
   // If the user isn't signed in and the route is private, redirect to sign-in
@@ -21,6 +26,10 @@ export default clerkMiddleware(async (auth, req) => {
   if (userId && isProtectedRoute(req)) {
     return NextResponse.next()
   }
+
+  // Allow all other requests (including non-protected routes and public API routes)
+  // Note: This might need adjustment depending on default behavior desired for other API routes
+  return NextResponse.next();
 })
 
 export const config = {
