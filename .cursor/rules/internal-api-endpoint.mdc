@@ -1,10 +1,25 @@
 ---
-description:
-globs:
-alwaysApply: true
+description: 
+globs: app/api/internal/get-creds/route.ts
+alwaysApply: false
 ---
+## Description: Rules for implementing the internal credential API endpoint.
 
-# Your rule content
+# Internal Credential API Endpoint Rules (`/api/internal/get-creds`)
 
-- You can @ files here
-- You can use markdown but dont have to
+- This is a Next.js API Route (`route.ts`).
+- **Method:** Handle `GET` requests.
+- **Security:**
+    - **MUST** validate the `X-Internal-Secret` header against the `INTERNAL_API_SHARED_SECRET` environment variable. Return 401/403 if invalid or missing.
+    - Implement further security if needed later (e.g., IP allowlisting, JWT).
+- **Input:** Expect a `client_identifier` query parameter from the request URL.
+- **Logic (Phase 2+):**
+    - Use the `client_identifier` to look up the corresponding `AgencyClient` record in the database (using Drizzle).
+    - Enforce data isolation – ensure the lookup is implicitly tied to the *correct agency* if context allows, though the initial request likely won't have agency context. The design needs to ensure a `client_identifier` is unique enough or lookup logic prevents cross-tenant access.
+    - Retrieve the associated secure credential reference/data.
+    - Fetch the actual credential from the secure store (Secrets Manager, Vault, encrypted DB field).
+    - **NEVER** return raw sensitive credentials directly if only a reference is stored. The Python server might need to use the reference to fetch from the secrets manager itself, or this API acts as a proxy to the secrets manager. Clarify the flow based on the chosen secure storage method (PRD T2.3/S2.3). *Initial thought: For simplicity, this API *could* fetch from the secret manager and return the credential JSON content directly over the secure internal link, assuming the link itself is sufficiently secured (mTLS ideally, or strong network isolation + shared secret)*.
+- **Response:**
+    - On success, return a JSON object containing `{ propertyId: string, credentialInfo: object }`. `credentialInfo` should be the structure the `google-analytics-data` client expects (likely the parsed Service Account JSON).
+    - On error (not found, unauthorized, internal error), return appropriate HTTP status codes (404, 403, 500) with a clear JSON error message `{ error: string }`.
+- **MVP (Phase 1):** This endpoint returns hardcoded `propertyId` and `credentialInfo` after validating the shared secret header.

@@ -4,6 +4,9 @@ export async function GET(request: NextRequest) {
   const internalSecret = process.env.INTERNAL_API_SHARED_SECRET
   const receivedSecret = request.headers.get("X-Internal-Secret")
 
+  // Get client identifier from query params
+  const clientIdentifier = request.nextUrl.searchParams.get("client_identifier")
+
   // --- Security Check ---
   if (!internalSecret) {
     console.error(
@@ -23,20 +26,28 @@ export async function GET(request: NextRequest) {
   // In later phases, this will perform a database lookup based on a client_identifier
   // passed perhaps as a query parameter, e.g., request.nextUrl.searchParams.get('clientId')
 
-  console.log("Internal API /get-creds called successfully (MVP)")
+  console.log("Internal API /get-creds called successfully (MVP)", {
+    clientIdentifier
+  })
 
   const testCredentialData = {
-    propertyId: "YOUR_TEST_GA4_PROPERTY_ID", // Replace with a real ID if you have one for testing
-    credentialInfo: {
-      // Example structure - adjust based on how your GA4 client will load creds
-      // For MVP, maybe point to a dummy file or have dummy inline content
-      // Later, this might be a reference to fetch from secrets manager
-      type: "service_account_content", // Or 'service_account_file'
-      // path: "/path/to/your/test_service_account.json", // If using file path
-      // OR provide content directly (less ideal for real keys)
-      // content: { /* Content of your service account JSON */ }
-      // OR reference to fetch from secrets manager
-      secret_manager_ref: "arn:aws:secretsmanager:..." // Example for AWS
+    // Using snake_case to match the expected format in the Python client
+    property_id: "YOUR_TEST_GA4_PROPERTY_ID", // Replace with a real ID if you have one for testing
+    credentials: {
+      // Google Service Account structure needed by google-analytics-data client
+      type: "service_account",
+      project_id: "test-project-id",
+      private_key_id: "fake_key_id",
+      private_key:
+        "-----BEGIN PRIVATE KEY-----\nFAKE_KEY_DATA\n-----END PRIVATE KEY-----\n",
+      client_email:
+        "test-service-account@test-project-id.iam.gserviceaccount.com",
+      client_id: "12345678901234567890",
+      auth_uri: "https://accounts.google.com/o/oauth2/auth",
+      token_uri: "https://oauth2.googleapis.com/token",
+      auth_provider_x509_cert_url: "https://www.googleapis.com/oauth2/v1/certs",
+      client_x509_cert_url:
+        "https://www.googleapis.com/robot/v1/metadata/x509/test-service-account%40test-project-id.iam.gserviceaccount.com"
     }
   }
 
