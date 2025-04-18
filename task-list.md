@@ -123,25 +123,25 @@
 | ID | Task | Description | PRD Ref | Dependencies | Status |
 |----|------|-------------|---------|--------------|--------|
 | 2.1 | Initialize Next.js project | Clone template or create new project | T1.5 | None | 🔄 |
-| 2.2 | Install dependencies | Run npm install | T1.5 | 2.1 | 🔄 |
-| 2.3 | Configure environment | Setup basic .env.local file | T1.5 | 2.2 | 🔄 |
+| 2.2 | Install dependencies | Run npm install | T1.5 | 2.1 | ✅ |
+| 2.3 | Configure environment | Setup basic .env.local file | T1.5 | 2.2 | ✅ |
 
 #### Internal Credential API
 
 | ID | Task | Description | PRD Ref | Dependencies | Status |
 |----|------|-------------|---------|--------------|--------|
-| 2.4 | Create API endpoint | Add route.ts in app/api/internal/get-creds/ | T1.6 | 2.3 | 🔄 |
-| 2.5 | Implement security check | Verify X-Internal-Secret header against env var | S1.3 | 2.4 | 🔄 |
-| 2.6 | Return hardcoded response | Return test propertyId and credentialInfo JSON | T1.6 | 2.5 | 🔄 |
-| 2.7 | Add placeholder comments | Document future DB/credential handling plans | S1.2 | 2.6 | 🔄 |
+| 2.4 | Create API endpoint | Add route.ts in app/api/internal/get-creds/ | T1.6 | 2.3 | ✅ |
+| 2.5 | Implement security check | Verify X-Internal-Secret header against env var | S1.3 | 2.4 | ✅ |
+| 2.6 | Return hardcoded response | Return test propertyId and credentialInfo JSON | T1.6 | 2.5 | ✅ |
+| 2.7 | Add placeholder comments | Document future DB/credential handling plans | S1.2 | 2.6 | ✅ |
 
 #### Deployment & Configuration
 
 | ID | Task | Description | PRD Ref | Dependencies | Status |
 |----|------|-------------|---------|--------------|--------|
-| 2.8 | Deploy Next.js app | Deploy to platform like Vercel/Railway | T1.5 | 2.7 | 🔄 |
-| 2.9 | Configure environment | Set INTERNAL_API_SHARED_SECRET on hosting | S1.3 | 2.8 | 🔄 |
-| 2.10 | Secure API endpoint | Restrict access to MCP server if possible | S1.3 | 2.9 | 🔄 |
+| 2.8 | Deploy Next.js app | Deploy to platform like Vercel/Railway | T1.5 | 2.7 | ✅ |
+| 2.9 | Configure environment | Set INTERNAL_API_SHARED_SECRET on hosting | S1.3 | 2.8 | ✅ |
+| 2.10 | Secure API endpoint | Restrict access to MCP server if possible | S1.3 | 2.9 | ✅ |
 
 ### Integration & E2E Testing <a name="integration-phase1"></a>
 
