@@ -1,7 +1,10 @@
 ---
-description: Follow these rules for all requests.
-globs: 
+description: 
+globs: **/*.ts,**/*.tsx,**/*.js,**/*.jsx,**/package.json,drizzle.config.ts,middleware.ts,next.config.mjs,**/tsconfig.json
+alwaysApply: false
 ---
+## Description: General rules and context for the GA4 Agency Portal (Node.js/Next.js).
+
 # Project Instructions
 
 Use specification and guidelines as you build the app.
@@ -14,38 +17,44 @@ You will see <ai_context> tags in the code. These are context tags that you shou
 
 ## Overview
 
-This is a web app template.
+This repository (`ga4-agency-portal`) contains the Node.js/Next.js-based **Agency Portal and Credential Backend** for the **GA4 MCP SaaS** project. Its primary roles are:
+1.  Providing a web UI for marketing agencies to manage their client GA4 connections.
+2.  Handling agency user authentication using Clerk.
+3.  Storing agency and client metadata (e.g., client identifiers, GA4 Property IDs) in a PostgreSQL database via Supabase/Drizzle.
+4.  **Securely managing** (storing/retrieving) GA4 Service Account credentials provided by agencies for their clients.
+5.  Exposing a **secure internal API endpoint** (`/api/internal/get-creds`) for the Python MCP server (Repo 1) to fetch credentials.
+
+This project is based on `mckaywrigley/mckays-app-template`. **Follow the rules defined herein, which incorporate and adapt the template's original guidelines.**
+
+Refer to the main project PRD and Task List for detailed requirements and architecture.
 
 ## Tech Stack
 
-- Frontend: Next.js, Tailwind, Shadcn, Framer Motion
-- Backend: Postgres, Supabase, Drizzle ORM, Server Actions
-- Auth: Clerk
-- Payments: Stripe
-- Analytics: PostHog
-- Deployment: Vercel
+- **Frontend:** Next.js (App Router), React, Tailwind CSS, Shadcn UI, Framer Motion
+- **Backend:** Next.js API Routes & Server Actions, PostgreSQL (via Supabase), Drizzle ORM
+- **Authentication:** Clerk
+- **Internal API:** Provides credentials to the Python MCP server (Repo 1). **Security is critical.**
+- **Credential Storage:** Secure mechanism (e.g., Cloud Secrets Manager, Vault, DB Encryption - **Implementation detail is crucial**).
+- **Payments:** Stripe (hooks available, integration optional based on project phase)
+- **Analytics:** PostHog (integration available)
+- **Deployment:** Vercel / Node.js Hosting
 
 ## Project Structure
 
-- `actions` - Server actions
-  - `db` - Database related actions
-  - Other actions
-- `app` - Next.js app router
-  - `api` - API routes
-  - `route` - An example route
-    - `_components` - One-off components for the route
-    - `layout.tsx` - Layout for the route
-    - `page.tsx` - Page for the route
-- `components` - Shared components
-  - `ui` - UI components
-  - `utilities` - Utility components
-- `db` - Database
-  - `schema` - Database schemas
-- `lib` - Library code
-  - `hooks` - Custom hooks
-- `prompts` - Prompt files
-- `public` - Static assets
-- `types` - Type definitions
+Follows the `mckays-app-template` structure:
+- `actions`: Server actions (especially `actions/db/` for CRUD related to Agencies, AgencyClients, Credentials).
+- `app`: Next.js app router.
+    - `(auth)`: Clerk authentication routes.
+    - `(marketing)`: Public-facing pages (adapt/remove as needed for this SaaS).
+    - **`agency`**: (Proposed location for) Core agency UI routes/dashboard for client management.
+    - **`api/internal/get-creds`**: **Crucial internal API endpoint** for Repo 1.
+- `components`: Shared React components (UI uses Shadcn).
+- `db`: Drizzle ORM setup.
+    - `schema`: Database schema definitions (`profiles` likely adapted to `agencies`, add `agencyClients`, `credentials`).
+    - `migrations`: Drizzle migration files (managed via `drizzle-kit`).
+- `lib`: Utility functions, Stripe/Drizzle clients.
+- `types`: Shared TypeScript type definitions.
+- `.env.local`, `.env.example`: Environment variables (ensure `INTERNAL_API_SHARED_SECRET` is added).
 
 ## Rules
 
@@ -53,28 +62,29 @@ Follow these rules when building the app.
 
 ### General Rules
 
-- Use `@` to import anything from the app unless otherwise specified
-- Use kebab case for all files and folders unless otherwise specified
-- Don't update shadcn components unless otherwise specified
+- Use `@` to import anything from the app unless otherwise specified.
+- Use kebab case for all files and folders unless otherwise specified.
+- Don't update shadcn components unless otherwise specified.
+- Ensure multi-tenancy / data isolation is strictly enforced in all database queries and backend logic related to agencies and their clients.
 
 #### Env Rules
 
-- If you update environment variables, update the `.env.example` file
-- All environment variables should go in `.env.local`
-- Do not expose environment variables to the frontend
-- Use `NEXT_PUBLIC_` prefix for environment variables that need to be accessed from the frontend
-- You may import environment variables in server actions and components by using `process.env.VARIABLE_NAME`
+- If you update environment variables, update the `.env.example` file.
+- **Add `INTERNAL_API_SHARED_SECRET` for securing the internal API.**
+- All environment variables should go in `.env.local`.
+- Do not expose environment variables to the frontend unless prefixed with `NEXT_PUBLIC_`.
+- You may import environment variables in server actions and components by using `process.env.VARIABLE_NAME`.
 
 #### Type Rules
 
 Follow these rules when working with types.
 
-- When importing types, use `@/types`
-- Name files like `example-types.ts`
-- All types should go in `types`
-- Make sure to export the types in `types/index.ts`
-- Prefer interfaces over type aliases
-- If referring to db types, use `@/db/schema` such as `SelectTodo` from `todos-schema.ts`
+- When importing types, use `@/types`.
+- Name files like `example-types.ts`.
+- All types should go in `types`.
+- Make sure to export the types in `types/index.ts`.
+- Prefer interfaces over type aliases where appropriate, but `type` is common for inferred Drizzle types.
+- If referring to DB types, use `@/db/schema` (e.g., `SelectAgencyClient` from `agency-clients-schema.ts`). Define specific `Select` and `Insert` types in schema files.
 
 An example of a type:
 
@@ -84,13 +94,13 @@ An example of a type:
 export type ActionState<T> =
   | { isSuccess: true; message: string; data: T }
   | { isSuccess: false; message: string; data?: never }
-```
+
 
 And exporting it:
 
 `types/index.ts`
 
-```ts
 export * from "./actions-types"
+// Add exports for any new domain-specific types
 ```
 

@@ -1,0 +1,56 @@
+---
+description: 
+globs: actions/db/**/*.ts,app/api/internal/get-creds/route.ts,middleware.ts,db/schema/*.ts
+alwaysApply: false
+---
+# Security Rules
+
+Security is paramount for this application due to the handling of third-party credentials (GA4 Service Accounts). Adhere strictly to these rules.
+
+## 1. Credential Management (Highest Priority)
+
+- **Storage:**
+    - **NEVER** store raw GA4 Service Account keys directly in the main PostgreSQL database tables (`agencyClients`, `credentials`) unless they are strongly encrypted *at the application layer* before insertion.
+    - **PREFERRED METHOD:** Use a dedicated secrets management service (e.g., AWS Secrets Manager, Google Secret Manager, HashiCorp Vault). Store only the *reference* (e.g., secret ARN or name) in the database (`agencyClientsTable.credentialReference`).
+    - If using DB encryption, ensure robust key management practices are followed.
+- **Retrieval:**
+    - When the internal API (`/api/internal/get-creds`) needs credentials, it should retrieve the reference from the DB and then securely fetch the actual secret from the secrets manager *only when needed*.
+    - Alternatively, if the internal API fetches and returns the secret content directly to Repo 1, ensure the communication channel itself is highly secure (mTLS preferred over just shared secret + HTTPS).
+- **Upload:** Implement secure handling for credential file uploads (Phase 2). Ensure files are processed server-side, immediately stored securely, and the original upload potentially deleted from temporary storage. Validate file content server-side.
+- **Access:** Only the backend processes needing to interact with GA4 (Repo 1 via Internal API, or potentially validation logic in Repo 2) should have access to retrieve the raw credentials. The Agency Portal UI should **never** display raw credentials.
+
+## 2. Internal API Security (`/api/internal/get-creds`)
+
+- **Authentication:**
+    - **MVP:** MUST rigorously validate the `X-Internal-Secret` header against the `INTERNAL_API_SHARED_SECRET` environment variable. Reject requests without or with an invalid secret immediately (401/403).
+    - **Future:** Consider stronger authentication like mutual TLS (mTLS) or short-lived JWTs if the infrastructure allows.
+- **Authorization:** The API retrieves credentials based on `client_identifier`. Ensure the lookup logic cannot be manipulated to access credentials associated with a different agency (this relies heavily on correct database query logic and potentially unique `client_identifier` constraints).
+- **Network Exposure:** This API endpoint should **NOT** be publicly accessible. Ideally, restrict access at the network level (e.g., VPC, firewall rules) so only the deployed Repo 1 instances can reach it.
+- **Rate Limiting:** Consider basic rate limiting if abuse from the Repo 1 service is a concern, although less critical than the public-facing portal.
+
+## 3. Data Isolation / Multi-Tenancy
+
+- **CRITICAL:** All database queries and Server Actions operating on agency-specific data (`agencyClients`, `credentials`, etc.) **MUST** include filters based on the authenticated agency user's ID (`agencyId` or equivalent).
+- Use Clerk's `auth()` helper reliably in Server Actions to get the `userId` and associate it with the correct agency data.
+- Prevent IDOR (Insecure Direct Object Reference) vulnerabilities by ensuring users can only access/modify resources belonging to their agency. Validate ownership on reads, updates, and deletes.
+
+## 4. Authentication & Authorization (Clerk)
+
+- Use Clerk middleware (`middleware.ts`) correctly to protect authenticated routes (e.g., the agency dashboard).
+- Rely on Clerk for session management and user authentication.
+- Ensure Clerk secrets (`CLERK_SECRET_KEY`) are kept confidential.
+
+## 5. Input Validation
+
+- Validate all inputs received from the client (UI forms via Server Actions) and from the internal API request.
+- Use libraries like Zod for robust validation of data structures before processing or database insertion/update.
+- Sanitize inputs where appropriate to prevent XSS or other injection attacks, although React/Next.js provide some baseline protection.
+
+## 6. Dependency Management
+
+- Keep dependencies (npm packages) updated regularly using tools like `npm outdated` or automated security scanners (e.g., GitHub Dependabot) to patch known vulnerabilities.
+
+## 7. Error Handling & Logging
+
+- Do not expose sensitive information (e.g., full error stacks, internal paths, credential details) in error messages sent to the client or logged insecurely.
+- Log security-relevant events (e.g., failed login attempts, unauthorized API access attempts, credential upload/access).
