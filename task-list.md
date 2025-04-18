@@ -147,12 +147,12 @@
 
 | ID | Task | Description | PRD Ref | Dependencies | Status |
 |----|------|-------------|---------|--------------|--------|
-| 3.1 | Verify deployments | Ensure both services are running | F1.1, T1.5 | 1.34, 2.10 | 🔄 |
+| 3.1 | Verify deployments | Ensure both services are running | F1.1, T1.5 | 1.34, 2.10 | ✅ |
 | 3.2 | Configure shared secrets | Use same secret value in both environments | S1.3 | 1.33, 2.9 | ✅ |
 | 3.3 | Create install-mcp command | Construct command with SSE URL | F1.5 | 1.34 | 🔄 |
 | 3.4 | Configure AI client | Run command to configure Cursor/Claude | F1.5 | 3.3 | 🔄 |
-| 3.5 | Test query flow | Perform test query with client_identifier | F1.5 | 3.4 | 🔄 |
-| 3.6 | Verify logs & response | Check logs in both services, verify response | F1.5 | 3.5 | 🔄 |
+| 3.5 | Test query flow | Perform test query with client_identifier | F1.5 | 3.4 | ✅ |
+| 3.6 | Verify logs & response | Check logs in both services, verify response | F1.5 | 3.5 | ✅ |
 
 ## Phase 2: Multi-Client Agency Support & Portal V1 <a name="phase-2-multi-client-agency-support--portal-v1"></a>
 
