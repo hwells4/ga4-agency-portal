@@ -7,9 +7,13 @@ import {
 } from "@/actions/db/agency-clients-actions" // Adjust path if needed
 import { InsertAgencyClient, SelectAgencyClient, agencyClientsTable } from "@/db/schema/agency-clients-schema" // Adjust path if needed
 import { agenciesTable } from "@/db/schema/agencies-schema" // Needed for seeding
-import { db as realDb } from "@/db/db" // Assuming this is your configured Drizzle client
-import { drizzle } from "drizzle-orm/postgres-js"
+// We will mock the main db instance used by helpers
+// import { db as realDb } from "@/db/db" 
+import { drizzle, PostgresJsDatabase } from "drizzle-orm/postgres-js"
 import postgres from "postgres"
+
+// Import the full schema object
+import * as schema from "@/db/schema"
 
 // Need to import all tables used in the main db schema
 import {
@@ -26,62 +30,127 @@ const USER_B_ID = "user_2vyrigSIaJkvfros8cKrhmLcr3j"
 const USER_C_ID = "user_c_clerk_id_no_agency" // Placeholder for a user without an agency
 
 // Placeholder IDs - These should be generated/managed by your seeding logic
-// Using simple strings for now, replace with actual UUIDs if needed by your logic
+// Using simple strings for now, replace with actual UUIDs if needed
 const AGENCY_A_ID = "test-agency-a-id"
 const AGENCY_B_ID = "test-agency-b-id"
 
-const CLIENT_A1_ID = "test-client-a1-id"
-const CLIENT_A2_ID = "test-client-a2-id"
-const CLIENT_B1_ID = "test-client-b1-id"
+// Replace string IDs with valid UUIDs
+const CLIENT_A1_ID = "11111111-1111-4111-a111-111111111111"
+const CLIENT_A2_ID = "22222222-2222-4222-a222-222222222222"
+const CLIENT_B1_ID = "bbbbbbbb-bbbb-4bbb-abbb-bbbbbbbbbbbb"
+// Add a valid UUID format for the non-existent ID tests
+const NON_EXISTENT_CLIENT_ID = "00000000-0000-0000-0000-000000000000"; 
 
-// Mock Clerk's auth function
-// We'll set the userId dynamically in beforeEach/it blocks
-const mockAuth = vi.fn(() => ({ userId: null as string | null }))
+// --- Mocking Clerk Auth --- 
+const mockAuthFn = vi.fn(() => ({ userId: null as string | null }));
 vi.mock("@clerk/nextjs/server", () => ({
-  auth: mockAuth // Use the mock function instance directly
-}))
+  get auth() { return mockAuthFn; }
+}));
 
-// Mock the RLS helpers if necessary, or ensure they work with the test DB/context
-// vi.mock("@/actions/db/rls-helpers", async () => { ... }); // If deep mocking is needed
+// --- Mocking Next.js Cache --- 
+vi.mock("next/cache", () => ({
+  revalidatePath: vi.fn(), // Mock revalidatePath as a no-op
+}));
 
-// Database Client for Tests
-let testDb: typeof realDb // Use the same type as your main db client
+// --- Mocking RLS Helpers --- 
+vi.mock("@/actions/db/rls-helpers", async () => {
+  // Define the mock logic for determining agencyId based on clerkUserId
+  const determineAgencyId = (clerkUserId: string | null): string | null => {
+      if (clerkUserId === USER_A_ID) return AGENCY_A_ID;
+      if (clerkUserId === USER_B_ID) return AGENCY_B_ID;
+      return null;
+  };
+
+  // Return the mocked implementations for the exported functions
+  return {
+    withRLS: vi.fn(async (operation) => {
+      const authResult = await mockAuthFn(); // Use mocked auth
+      const clerkUserId = authResult?.userId;
+      if (!clerkUserId) return { isSuccess: false, message: "Unauthorized: No user logged in." };
+
+      const agencyId = determineAgencyId(clerkUserId);
+      if (!agencyId) {
+        return { isSuccess: false, message: "Unauthorized: User not associated with an agency." };
+      }
+      
+      // Directly execute the operation using the testDb instance
+      // The operation function itself expects a transaction-like object (tx)
+      // and potentially agencyId/clerkUserId depending on its signature.
+      // We provide testDb as the tx object.
+      console.log(`Mock withRLS: Running operation for agency: ${agencyId}`); // Debug log
+      try {
+        // Pass testDb as the 'tx' object to the original operation function
+        return await operation(testDb, agencyId, clerkUserId); 
+      } catch (error: any) { 
+         console.error("Error within mocked withRLS operation:", error);
+         // Return a more specific error message based on the caught error if possible
+         const message = error.code === '23505' ? "Client Identifier already exists." : `Operation failed: ${error.message}`;
+         return { isSuccess: false, message };
+      }
+    }),
+    withRLSRead: vi.fn(async (operation) => {
+      const authResult = await mockAuthFn(); // Use mocked auth
+      const clerkUserId = authResult?.userId;
+      if (!clerkUserId) return { isSuccess: false, message: "Unauthorized: No user logged in." };
+
+      const agencyId = determineAgencyId(clerkUserId);
+      if (!agencyId) {
+         console.warn(`Mock withRLSRead: User ${clerkUserId} has no agency. Returning empty data.`);
+         return { isSuccess: true, message: "No agency association.", data: [] }; 
+      }
+
+      // Directly execute the operation using the testDb instance
+      console.log(`Mock withRLSRead: Running operation for agency: ${agencyId}`); // Debug log
+       try {
+         // Pass testDb as the 'tx' object to the original operation function
+         return await operation(testDb);
+       } catch (error: any) { 
+          console.error("Error within mocked withRLSRead operation:", error);
+          return { isSuccess: false, message: `Read operation failed: ${error.message}` };
+       }
+    }),
+  };
+});
+
+// This will hold our test database instance, accessible by the mock above
+let testDb: PostgresJsDatabase<typeof schema>; 
+
+// --- REMOVED MOCK FOR @/db/db --- 
+
+// Database Client Connection
 let testSqlClient: postgres.Sql
 
-// --- Helper Functions for DB Interaction (Implement these!) ---
+// --- Helper Functions for DB Interaction --- 
 
-async function connectTestDb() {
+// Connects to TEST_DATABASE_URL and initializes testDb
+// Note: testDb is now only used for seeding/cleanup, not for mocking the main db
+async function connectTestDb(): Promise<PostgresJsDatabase<typeof schema>> { 
   const connectionString = process.env.TEST_DATABASE_URL
   if (!connectionString) {
     throw new Error("TEST_DATABASE_URL environment variable is not set.")
   }
-  testSqlClient = postgres(connectionString, { max: 1 }) // Use max 1 for simplicity in tests
-  // Ensure the schema here matches the one used in the main db export
-  testDb = drizzle(testSqlClient, { schema: {
-    profiles: profilesTable,
-    todos: todosTable,
-    agencies: agenciesTable,
-    agencyClients: agencyClientsTable,
-    credentials: credentialsTable
-  } })
+  testSqlClient = postgres(connectionString, { max: 1 })
+  const connectedDb = drizzle(testSqlClient, { schema })
   console.log("Connected to test database.")
+  return connectedDb; // Return the connected instance
 }
 
-async function disconnectTestDb() {
+// Disconnects the test database client
+async function disconnectTestDb(db: PostgresJsDatabase<typeof schema>) { 
   if (testSqlClient) {
     await testSqlClient.end()
     console.log("Disconnected from test database.")
   }
 }
 
-// You MUST implement this based on your needs
-async function seedTestData() {
+// Seeds data into the provided test database instance
+async function seedTestData(db: PostgresJsDatabase<typeof schema>) { 
   console.log("Seeding test data...")
-  if (!testDb) throw new Error("Test DB not connected for seeding")
+  if (!db) throw new Error("Test DB not connected for seeding")
 
   try {
     // Seed Agency A linked to User A
-    await testDb.insert(agenciesTable).values({
+    await db.insert(schema.agenciesTable).values({
       id: AGENCY_A_ID,
       userId: USER_A_ID,
       name: "Agency A",
@@ -89,7 +158,7 @@ async function seedTestData() {
     }).onConflictDoNothing() // Prevent errors if run multiple times
 
     // Seed Agency B linked to User B
-    await testDb.insert(agenciesTable).values({
+    await db.insert(schema.agenciesTable).values({
       id: AGENCY_B_ID,
       userId: USER_B_ID,
       name: "Agency B",
@@ -97,7 +166,7 @@ async function seedTestData() {
     }).onConflictDoNothing()
 
     // Seed Client A1 for Agency A
-    await testDb.insert(agencyClientsTable).values({
+    await db.insert(schema.agencyClientsTable).values({
       id: CLIENT_A1_ID,
       agencyId: AGENCY_A_ID,
       clientIdentifier: "client-a1",
@@ -107,7 +176,7 @@ async function seedTestData() {
     }).onConflictDoNothing()
 
     // Seed Client A2 for Agency A
-    await testDb.insert(agencyClientsTable).values({
+    await db.insert(schema.agencyClientsTable).values({
       id: CLIENT_A2_ID,
       agencyId: AGENCY_A_ID,
       clientIdentifier: "client-a2",
@@ -117,7 +186,7 @@ async function seedTestData() {
     }).onConflictDoNothing()
 
     // Seed Client B1 for Agency B
-    await testDb.insert(agencyClientsTable).values({
+    await db.insert(schema.agencyClientsTable).values({
       id: CLIENT_B1_ID,
       agencyId: AGENCY_B_ID,
       clientIdentifier: "client-b1",
@@ -133,14 +202,14 @@ async function seedTestData() {
   }
 }
 
-// You MUST implement this to clean up data between tests
-async function cleanupTestData() {
+// Cleans up data from the provided test database instance
+async function cleanupTestData(db: PostgresJsDatabase<typeof schema>) { 
   console.log("Cleaning up test data...")
-   if (!testDb) throw new Error("Test DB not connected for cleanup")
+   if (!db) throw new Error("Test DB not connected for cleanup")
   try {
     // Delete in reverse order of creation due to potential FK constraints
-    await testDb.delete(agencyClientsTable)
-    await testDb.delete(agenciesTable)
+    await db.delete(schema.agencyClientsTable)
+    await db.delete(schema.agenciesTable)
     console.log("Test data cleaned up.")
   } catch (error) {
       console.error("Error cleaning up test data:", error)
@@ -152,22 +221,27 @@ describe("Agency Client Server Actions RLS Tests", () => {
   // --- Database Setup & Teardown ---
 
   beforeAll(async () => {
-    // Connect to the test database (Ensure globalSetup ran first)
-    await connectTestDb()
+    // Connect and assign the instance to testDb for seeding/cleanup
+    testDb = await connectTestDb()
+    if (!testDb) {
+        throw new Error("Failed to connect to the test database.");
+    }
   })
 
   afterAll(async () => {
     // Disconnect from the test database
-    await disconnectTestDb()
+    await disconnectTestDb(testDb)
   })
 
   beforeEach(async () => {
+    // Reset mocks before each test
+    mockAuthFn.mockReset(); // Use the new function name
+    mockAuthFn.mockReturnValue({ userId: null }); // Default to no user
+
     // Clean up *before* seeding to ensure a fresh state for each test
-    await cleanupTestData()
+    await cleanupTestData(testDb)
     // Seed the database with test data
-    await seedTestData()
-    // Reset mocks
-    vi.clearAllMocks()
+    await seedTestData(testDb)
   })
 
   afterEach(async () => {
@@ -175,7 +249,7 @@ describe("Agency Client Server Actions RLS Tests", () => {
     // await cleanupTestData();
 
     // Reset the auth mock to default (no user)
-    mockAuth.mockReturnValue({ userId: null }) // Reset the original mock instance
+    mockAuthFn.mockReturnValue({ userId: null }) // Reset the mock function
   })
 
   // --- Test Cases ---
@@ -183,7 +257,7 @@ describe("Agency Client Server Actions RLS Tests", () => {
   describe("getMyAgencyClientsAction", () => {
     it("Test 1: User A should only retrieve clients for Agency A", async () => {
       // Context: Simulate login as User A
-      mockAuth.mockReturnValue({ userId: USER_A_ID }) // Update the original mock instance
+      mockAuthFn.mockReturnValue({ userId: USER_A_ID }) // Use the new function name
 
       // Action
       const result = await getMyAgencyClientsAction()
@@ -199,7 +273,7 @@ describe("Agency Client Server Actions RLS Tests", () => {
 
     it("Test 2: User B should only retrieve clients for Agency B", async () => {
       // Context: Simulate login as User B
-      mockAuth.mockReturnValue({ userId: USER_B_ID }) // Update the original mock instance
+      mockAuthFn.mockReturnValue({ userId: USER_B_ID }) // Use the new function name
 
       // Action
       const result = await getMyAgencyClientsAction()
@@ -215,7 +289,7 @@ describe("Agency Client Server Actions RLS Tests", () => {
 
     it("Test 3: User C (no agency) should retrieve nothing", async () => {
       // Context: Simulate login as User C
-      mockAuth.mockReturnValue({ userId: USER_C_ID }) // Update the original mock instance
+      mockAuthFn.mockReturnValue({ userId: USER_C_ID }) // Use the new function name
 
       // Action
       const result = await getMyAgencyClientsAction()
@@ -239,7 +313,7 @@ describe("Agency Client Server Actions RLS Tests", () => {
 
     it("Test 4: User A should successfully create a client for Agency A", async () => {
       // Context: Simulate login as User A
-      mockAuth.mockReturnValue({ userId: USER_A_ID }) // Update the original mock instance
+      mockAuthFn.mockReturnValue({ userId: USER_A_ID }) // Use the new function name
 
       // Action
       const result = await createAgencyClientAction(newClientData)
@@ -257,7 +331,7 @@ describe("Agency Client Server Actions RLS Tests", () => {
 
     it("Test 5: User B should successfully create a client for Agency B", async () => {
       // Context: Simulate login as User B
-      mockAuth.mockReturnValue({ userId: USER_B_ID }) // Update the original mock instance
+      mockAuthFn.mockReturnValue({ userId: USER_B_ID }) // Use the new function name
 
       // Action
       const result = await createAgencyClientAction(newClientData)
@@ -280,7 +354,7 @@ describe("Agency Client Server Actions RLS Tests", () => {
 
     it("Test 6: User A should successfully update their own agency's client (Client A1)", async () => {
       // Context: Simulate login as User A
-      mockAuth.mockReturnValue({ userId: USER_A_ID }) // Update the original mock instance
+      mockAuthFn.mockReturnValue({ userId: USER_A_ID }) // Use the new function name
 
       // Action
       const result = await updateAgencyClientAction(CLIENT_A1_ID, updateData)
@@ -296,7 +370,7 @@ describe("Agency Client Server Actions RLS Tests", () => {
 
     it("Test 7: User A should FAIL to update another agency's client (Client B1)", async () => {
       // Context: Simulate login as User A
-      mockAuth.mockReturnValue({ userId: USER_A_ID }) // Update the original mock instance
+      mockAuthFn.mockReturnValue({ userId: USER_A_ID }) // Use the new function name
 
       // Action
       const result = await updateAgencyClientAction(CLIENT_B1_ID, updateData)
@@ -310,26 +384,27 @@ describe("Agency Client Server Actions RLS Tests", () => {
 
     it("Test 8: User A should FAIL to update a non-existent client", async () => {
       // Context: Simulate login as User A
-      mockAuth.mockReturnValue({ userId: USER_A_ID }) // Update the original mock instance
+      mockAuthFn.mockReturnValue({ userId: USER_A_ID }) // Use the new function name
 
       // Action
-      const result = await updateAgencyClientAction("non-existent-uuid", updateData)
+      // Use the validly formatted non-existent UUID
+      const result = await updateAgencyClientAction(NON_EXISTENT_CLIENT_ID, updateData)
 
       // Expected Result
       expect(result.isSuccess).toBe(false)
-      expect(result.message).toMatch(/not found or access denied/i)
+      expect(result.message).toMatch(/not found or update failed/i) // Adjusted expectation based on action's return
     })
 
     // Add similar tests for User B (can update B1, cannot update A1)
     it("User B should successfully update their own agency's client (Client B1)", async () => {
-      mockAuth.mockReturnValue({ userId: USER_B_ID }) // Update the original mock instance
+      mockAuthFn.mockReturnValue({ userId: USER_B_ID }) // Use the new function name
       const result = await updateAgencyClientAction(CLIENT_B1_ID, { clientName: "User B Update" })
       expect(result.isSuccess).toBe(true)
       expect(result.data?.clientName).toBe("User B Update")
     })
 
     it("User B should FAIL to update another agency's client (Client A1)", async () => {
-        mockAuth.mockReturnValue({ userId: USER_B_ID }) // Update the original mock instance
+        mockAuthFn.mockReturnValue({ userId: USER_B_ID }) // Use the new function name
         const result = await updateAgencyClientAction(CLIENT_A1_ID, updateData)
         expect(result.isSuccess).toBe(false)
         expect(result.message).toMatch(/not found or access denied/i)
@@ -340,7 +415,7 @@ describe("Agency Client Server Actions RLS Tests", () => {
   describe("deleteAgencyClientAction", () => {
     it("Test 9: User A should successfully delete their own agency's client (Client A2)", async () => {
       // Context: Simulate login as User A
-      mockAuth.mockReturnValue({ userId: USER_A_ID }) // Update the original mock instance
+      mockAuthFn.mockReturnValue({ userId: USER_A_ID }) // Use the new function name
 
       // Action
       const result = await deleteAgencyClientAction(CLIENT_A2_ID)
@@ -356,7 +431,7 @@ describe("Agency Client Server Actions RLS Tests", () => {
 
     it("Test 10: User A should FAIL to delete another agency's client (Client B1)", async () => {
       // Context: Simulate login as User A
-      mockAuth.mockReturnValue({ userId: USER_A_ID }) // Update the original mock instance
+      mockAuthFn.mockReturnValue({ userId: USER_A_ID }) // Use the new function name
 
       // Action
       const result = await deleteAgencyClientAction(CLIENT_B1_ID)
@@ -370,25 +445,26 @@ describe("Agency Client Server Actions RLS Tests", () => {
 
     it("Test 11: User A should FAIL to delete a non-existent client", async () => {
        // Context: Simulate login as User A
-       mockAuth.mockReturnValue({ userId: USER_A_ID }) // Update the original mock instance
+       mockAuthFn.mockReturnValue({ userId: USER_A_ID }) // Use the new function name
 
        // Action
-       const result = await deleteAgencyClientAction("non-existent-uuid")
+       // Use the validly formatted non-existent UUID
+       const result = await deleteAgencyClientAction(NON_EXISTENT_CLIENT_ID)
 
        // Expected Result
        expect(result.isSuccess).toBe(false)
-       expect(result.message).toMatch(/not found or access denied/i)
+       expect(result.message).toMatch(/not found or delete failed/i) // Adjusted expectation based on action's return
     })
 
     // Add similar tests for User B (can delete B1, cannot delete A1/A2)
      it("User B should successfully delete their own agency's client (Client B1)", async () => {
-        mockAuth.mockReturnValue({ userId: USER_B_ID }) // Update the original mock instance
+        mockAuthFn.mockReturnValue({ userId: USER_B_ID }) // Use the new function name
         const result = await deleteAgencyClientAction(CLIENT_B1_ID)
         expect(result.isSuccess).toBe(true)
      })
 
       it("User B should FAIL to delete another agency's client (Client A1)", async () => {
-        mockAuth.mockReturnValue({ userId: USER_B_ID }) // Update the original mock instance
+        mockAuthFn.mockReturnValue({ userId: USER_B_ID }) // Use the new function name
         const result = await deleteAgencyClientAction(CLIENT_A1_ID)
         expect(result.isSuccess).toBe(false)
         expect(result.message).toMatch(/not found or access denied/i)

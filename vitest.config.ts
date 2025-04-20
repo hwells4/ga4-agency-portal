@@ -11,7 +11,15 @@ export default defineConfig({
     // Optional: Specify setup files
     // setupFiles: ["tests/setup/setupFile.ts"], // For per-file setup
     globalSetup: ["tests/setup/globalSetup.ts"], // For global setup (like starting DB)
-
+    exclude: [
+      "**/node_modules/**",
+      "**/dist/**",
+      "**/cypress/**",
+      "**/.{idea,git,cache,output,temp}/**",
+      "**/{karma,rollup,webpack,vite,vitest,jest,ava,babel,nyc,cypress,tsup,build}.config.*",
+      // Explicitly exclude drizzle config files
+      "**/drizzle.config.*.ts"
+    ],
     // Optional: Coverage configuration
     coverage: {
       provider: "v8", // or 'istanbul'
@@ -21,7 +29,6 @@ export default defineConfig({
         "app/api/internal/get-creds/route.ts", // Exclude example/non-tested files
         "components/ui/**", // Exclude ShadCN UI components
         "**/*.test.{ts,tsx}",
-        "**/node_modules/**",
         "**/dist/**",
         "**/.*/**", // hidden folders/files
         "*.config.{js,ts,cjs}", // config files
