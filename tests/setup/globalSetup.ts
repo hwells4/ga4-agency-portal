@@ -26,7 +26,7 @@ export default async function setup() {
     // Or configure drizzle-kit to use the environment variable directly if possible.
     // Example: execSync("npx drizzle-kit migrate --config=drizzle.config.test.ts", { stdio: "inherit" });
     // For now, assuming default config picks up TEST_DATABASE_URL or requires manual setup:
-    execSync("npx drizzle-kit migrate", { stdio: "inherit" })
+    execSync("npx drizzle-kit migrate --config=drizzle.config.test.ts", { stdio: "inherit" })
     console.log("Migrations applied to test database.")
 
     // Perform any other global seeding here if needed
