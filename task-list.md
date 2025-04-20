@@ -122,7 +122,7 @@
 
 | ID | Task | Description | PRD Ref | Dependencies | Status |
 |----|------|-------------|---------|--------------|--------|
-| 2.1 | Initialize Next.js project | Clone template or create new project | T1.5 | None | 🔄 |
+| 2.1 | Initialize Next.js project | Clone template or create new project | T1.5 | None | ✅ |
 | 2.2 | Install dependencies | Run npm install | T1.5 | 2.1 | ✅ |
 | 2.3 | Configure environment | Setup basic .env.local file | T1.5 | 2.2 | ✅ |
 
@@ -150,7 +150,7 @@
 | 3.1 | Verify deployments | Ensure both services are running | F1.1, T1.5 | 1.34, 2.10 | ✅ |
 | 3.2 | Configure shared secrets | Use same secret value in both environments | S1.3 | 1.33, 2.9 | ✅ |
 | 3.3 | Create install-mcp command | Construct command with SSE URL | F1.5 | 1.34 | 🔄 |
-| 3.4 | Configure AI client | Run command to configure Cursor/Claude | F1.5 | 3.3 | 🔄 |
+| 3.4 | Configure AI client | Run command to configure Cursor/Claude | F1.5 | 3.3 | ✅ |
 | 3.5 | Test query flow | Perform test query with client_identifier | F1.5 | 3.4 | ✅ |
 | 3.6 | Verify logs & response | Check logs in both services, verify response | F1.5 | 3.5 | ✅ |
 
@@ -163,8 +163,8 @@
 | ID | Task | Description | PRD Ref | Dependencies | Status |
 |----|------|-------------|---------|--------------|--------|
 | 2.11 | Configure Drizzle ORM | Set up connection to PostgreSQL/Supabase | T2.2 | 2.10 | 🔄 |
-| 2.12 | Define database schemas | Create schemas for Agencies, AgencyClients, Credentials | T2.2 | 2.11 | 🔄 |
-| 2.13 | Run migrations | Execute npx drizzle-kit generate/migrate | T2.2 | 2.12 | 🔄 |
+| 2.12 | Define database schemas | Create schemas for Agencies, AgencyClients, Credentials | T2.2 | 2.11 | ✅ |
+| 2.13 | Run migrations | Execute npx drizzle-kit generate/migrate | T2.2 | 2.12 | ✅ |
 
 #### Authentication & Backend Logic
 
@@ -174,6 +174,7 @@
 | 2.15 | Implement Server Actions | Create CRUD operations in actions/db/ | F2.2 | 2.13 | 🔄 |
 | 2.16 | Add credential handling | Implement secure credential storage/retrieval | T2.3, S2.3 | 2.15 | 🔄 |
 | 2.17 | Enforce data isolation | Add agency boundary checks to all queries | F2.4, S2.2 | 2.15 | 🔄 |
+| 2.17.1 | Setup Supabase RLS | Define and apply Row Level Security policies for multi-tenancy | S2.2, S3.1 | 2.13, 2.14 | 🔄 |
 
 #### Internal Credential API Enhancement
 
