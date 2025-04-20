@@ -70,49 +70,65 @@ Use the following npm scripts defined in `package.json`:
 2.  Vitest starts and executes the script defined in `globalSetup` (`tests/setup/globalSetup.ts`).
 3.  `globalSetup.ts`:
     a.  Starts the `postgres_test` container via `docker compose -f docker-compose.test.yml up -d --wait`.
-    b.  Runs `npx drizzle-kit migrate --config=drizzle.config.test.ts` to apply all migrations from `db/migrations` to the *test* database inside the Docker container.
-4.  Vitest discovers and runs your test files (e.g., `actions/__tests__/db/agency-clients-actions.test.ts`).
-5.  Inside a test file:
-    a.  `beforeAll` connects a Drizzle client instance (`testDb`) to the test database (`TEST_DATABASE_URL`).
-    b.  `beforeEach` cleans up data from previous runs (`cleanupTestData`) and then seeds necessary data for the current test (`seedTestData`), like agencies and clients.
-    c.  `beforeEach` also resets any mocks (like the Clerk `auth` mock).
-    d.  Individual `it` blocks run:
-        i.  The Clerk `auth` mock is configured to simulate a specific logged-in user (`mockAuth.mockReturnValue(...)`).
+    b.  Runs `npx drizzle-kit migrate --config=drizzle.config.test.ts` to apply all migrations from `db/migrations` to the *test* database inside the Docker container. This includes applying the RLS policies defined in your schema.
+4.  Vitest discovers and runs your unit test files (e.g., `actions/__tests__/db/agency-clients-actions.test.ts`).
+5.  Inside a unit test file (like `agency-clients-actions.test.ts`):
+    a.  `beforeAll` connects a Drizzle client instance (`testDb`) to the test database (`TEST_DATABASE_URL`). This `testDb` is used primarily for *seeding and cleanup* within the tests.
+    b.  `vi.mock` is used to intercept imports for external dependencies like `@clerk/nextjs/server`, `next/cache`, and critically, `@/actions/db/rls-helpers`.
+    c.  The Clerk mock (`mockAuthFn`) allows simulating different logged-in users.
+    d.  The RLS helper mock simulates the outcome of RLS checks (e.g., determining the user's agency ID, simulating blocks based on logic within the mock).
+    e.  `beforeEach` cleans up data (`cleanupTestData`) and then seeds necessary data (`seedTestData`) using the `testDb` instance.
+    f.  Individual `it` blocks run:
+        i.  The Clerk mock is configured (`mockAuthFn.mockReturnValue(...)`).
         ii. The server action under test is called.
-        iii. Assertions (`expect(...)`) verify the action's return value and potentially the database state.
-    e.  `afterAll` disconnects the Drizzle test client.
+        iii. Because the RLS helpers are mocked, the action runs the mocked wrapper logic. This logic determines the agency ID based on the mocked user and then executes the core database operation logic *passed into the wrapper* using the `testDb` instance.
+        iv. Assertions (`expect(...)`) verify the action's return value based on the *simulated* RLS behavior provided by the mocks.
+    g.  `afterAll` disconnects the Drizzle test client.
 6.  After all test files complete, Vitest executes the teardown function returned by `globalSetup`.
-7.  The teardown function stops and removes the test database container via `docker compose -f docker-compose.test.yml down -v`.
+7.  The teardown function stops and removes the test database container.
 
-## 7. Writing Tests
+## 7. Writing Unit Tests
 
-- **Location:** Place test files parallel to the code they test, within an `__tests__` directory (e.g., `actions/__tests__/db/agency-clients-actions.test.ts`).
-- **Clerk Mocking:** Use the pattern established in `agency-clients-actions.test.ts`:
-  ```typescript
-  const mockAuth = vi.fn(() => ({ userId: null as string | null }));
-  vi.mock("@clerk/nextjs/server", () => ({
-    auth: mockAuth
-  }));
-
-  // Inside tests or beforeEach:
-  mockAuth.mockReturnValue({ userId: USER_A_ID });
-  ```
-- **Database Interaction:** Use the helper functions (`connectTestDb`, `disconnectTestDb`, `seedTestData`, `cleanupTestData`) defined in the test file. Use the `testDb` instance for all database operations within tests.
-- **Seeding:** Ensure `seedTestData` creates all necessary prerequisite data (including parent records like Agencies) for the actions being tested.
-- **Cleanup:** `cleanupTestData` should remove data in the reverse order of creation to avoid foreign key constraint violations.
+- **Location:** Place test files parallel to the code they test, within an `__tests__` directory.
+- **Clerk Mocking:** Use the pattern with `vi.fn()` defined before `vi.mock("@clerk/nextjs/server", ...)`.
+- **RLS Helper Mocking:** The mock for `@/actions/db/rls-helpers` simulates the outcome of RLS checks based on the mocked user ID. See `agency-clients-actions.test.ts` for the pattern. Note the limitations described below.
+- **Database Interaction:** Use helper functions (`connectTestDb`, `disconnectTestDb`, `seedTestData`, `cleanupTestData`) and the `testDb` instance for setup and teardown within tests. The actual database operations within the actions run via the mocked RLS wrappers using this `testDb`.
+- **Seeding & Cleanup:** Ensure `seedTestData` creates necessary prerequisite data and `cleanupTestData` removes it correctly.
 
 ## 8. Database Management & Syncing
 
-- **Ephemeral Database:** The test database is temporary. It's created from scratch when tests start and destroyed when they finish.
-- **Schema Synchronization:** The test database schema is kept synchronized with your production/development schema automatically. This happens because the `globalSetup` script **always runs your existing Drizzle migration files** (`db/migrations/*`) against the fresh test database using `npx drizzle-kit migrate`. Any schema changes you create and migrate for your main database will be automatically reflected in the test database the next time `npm run test` is executed.
+- **Ephemeral Database:** The test database is temporary and reset for each full test run.
+- **Schema Synchronization:** The test database schema is kept synchronized automatically via migrations run by `globalSetup.ts`.
 
 ## 9. Troubleshooting
 
-- **`Cannot connect to the Docker daemon`:** Ensure Docker Desktop (or the Docker service) is running before executing `npm run test`.
-- **`relation "..." does not exist`:** This usually means migrations failed to run correctly against the test database.
-  - Check the output logs from `npm run test` for errors during the "Running migrations" step.
-  - Verify `drizzle.config.test.ts` is correct and points to the `TEST_DATABASE_URL`.
-  - Ensure your migration files in `db/migrations` are valid.
-- **`TEST_DATABASE_URL is not set`:** Make sure the `.env.test` file exists in the project root and contains the correct `TEST_DATABASE_URL` variable.
-- **`TypeError: ...mockReturnValue is not a function`:** Ensure you are using the `mockAuth` pattern correctly as shown in section 7.
-- **Seeding/Cleanup Errors:** Debug the SQL or logic within your `seedTestData` and `cleanupTestData` functions. 
+- **`Cannot connect to the Docker daemon`:** Ensure Docker Desktop is running.
+- **`relation "..." does not exist`:** Check migration status and `drizzle.config.test.ts`.
+- **`TEST_DATABASE_URL is not set`:** Ensure `.env.test` exists and is configured.
+- **Mocking Errors (`ReferenceError`, etc.):** Review `vi.mock` syntax, variable hoisting, and ensure mocks are correctly defined before use.
+- **Seeding/Cleanup Errors:** Debug SQL/logic in helper functions.
+
+## 10. Limitations & Required Integration Tests
+
+While these unit tests provide valuable feedback on the internal logic of server actions in isolation, they have limitations, particularly regarding Row Level Security (RLS):
+
+- **RLS Simulation:** The mock for `@/actions/db/rls-helpers` *simulates* the outcome of RLS checks based on the mocked user ID. It does *not* involve the actual database RLS mechanism (`SET app.current_agency_id = ...`) being invoked via the real `executeWithAgencyContext` function.
+- **Mock Accuracy:** The accuracy of the RLS simulation depends entirely on the mock implementation. If the real RLS helpers or database policies change, the mock must be updated manually.
+- **Delete Operation Gap:** As observed in `agency-clients-actions.test.ts` (specifically tests 10 and the corresponding User B test), reliably simulating the RLS block for DELETE operations within the unit test mock is challenging without making the mock overly complex or brittle. These specific unit tests are currently skipped.
+
+**Therefore, it is CRUCIAL to supplement these unit tests with Integration Tests that specifically validate the RLS functionality end-to-end.**
+
+### Required Integration Tests:
+
+Integration tests should:
+1.  Use the same test database setup (Docker, migrations via `globalSetup`).
+2.  Use the **real** RLS helper functions (`withRLS`, `withRLSRead`) and the underlying `executeWithAgencyContext`. **Do NOT mock `@/actions/db/rls-helpers`.**
+3.  Mock Clerk minimally (just enough to provide a `userId`).
+4.  Seed data for multiple distinct agencies and their clients.
+5.  Test scenarios like:
+    -   User A attempting to read/update/**delete** clients belonging to User B (should fail).
+    -   User B attempting to read/update/**delete** clients belonging to User A (should fail).
+    -   Users successfully performing actions on their *own* agency's clients.
+    -   Actions performed by a user not associated with any agency (should fail writes, reads return empty/fail depending on policy).
+
+These integration tests are necessary to confirm that the database RLS policies and the `executeWithAgencyContext` function work together correctly to enforce data isolation. 
