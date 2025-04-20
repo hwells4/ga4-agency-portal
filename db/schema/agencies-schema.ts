@@ -4,6 +4,8 @@ import { pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core"
 export const agenciesTable = pgTable("agencies", {
   // Clerk Organization ID
   id: text("id").primaryKey(),
+  // Clerk User ID of the owner/creator - REQUIRED FOR RLS HELPERS
+  userId: text("user_id").notNull(),
   name: text("name").notNull(),
   // Other agency-specific details can be added here
   createdAt: timestamp("created_at").defaultNow().notNull(),

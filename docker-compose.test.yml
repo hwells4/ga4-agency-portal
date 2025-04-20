@@ -1,0 +1,23 @@
+version: '3.8'
+
+services:
+  postgres_test:
+    image: postgres:15 # Use the same major version as your production/Supabase DB if possible
+    container_name: ga4_portal_postgres_test
+    environment:
+      POSTGRES_DB: test_db
+      POSTGRES_USER: test_user
+      POSTGRES_PASSWORD: test_password # Use a more secure password, manage via env ideally
+    ports:
+      - "5433:5432" # Map container port 5432 to host port 5433 to avoid conflicts
+    volumes:
+      - postgres_test_data:/var/lib/postgresql/data
+    # Optional: Add healthcheck to ensure DB is ready before tests run
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U test_user -d test_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_test_data: # Persists data between runs if needed, remove if you want clean slate always 

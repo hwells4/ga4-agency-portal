@@ -1,0 +1,80 @@
+---
+description: 
+globs: actions/db/rls-helpers.ts,db/rls.ts,db/schema/agencies-schema.ts,db/schema/*.ts,actions/db/*-actions.ts
+alwaysApply: false
+---
+### Cursor Rule: Row Level Security (RLS) for Agency Data
+
+**Goal:** Ensure strict data isolation (multi-tenancy) where users can only access database records associated with their specific agency. This is achieved using PostgreSQL's Row Level Security feature, managed via specific helpers.
+
+**Core Mechanism:**
+1.  **Agency Context:** RLS policies primarily rely on matching a row's `agencyId` column with the current user's associated agency ID.
+2.  **Session Variable:** A PostgreSQL session variable (`app.current_agency_id`) stores the relevant `agencyId` for the duration of a transaction.
+3.  **SQL Function:** A `SECURITY DEFINER` function (`set_current_agency_id`) sets this session variable.
+4.  **Application Helpers:** Standardized wrappers (`withRLS`, `withRLSRead` in `actions/db/rls-helpers.ts`) **MUST** be used. They handle:
+    *   Authenticating the user (via Clerk).
+    *   Querying the `agencies` table (using the user's Clerk `userId`) to find their associated `agencyId`.
+    *   Calling the SQL function to set the `app.current_agency_id` session variable.
+    *   Executing the database operation within a transaction using the correct context.
+
+---
+
+**Mandatory Setup & Prerequisites:**
+
+*   **`agencies.userId` Column:** The `agencies` table **MUST** have a non-nullable column (e.g., `userId: text("user_id").notNull()`) that stores the Clerk `userId` of the agency's owner or primary user. This is essential for linking the logged-in user to their agency. If this column does not exist, it **MUST** be added via a migration.
+*   **SQL Function (`set_current_agency_id`):** The following SQL function **MUST** exist in the database. Ensure the type matches your `agencyId` type (e.g., `uuid` or `text`).
+    ```sql
+    CREATE OR REPLACE FUNCTION set_current_agency_id(agency_id_input uuid) -- Or text
+    RETURNS void AS $$
+    BEGIN
+      PERFORM set_config('app.current_agency_id', agency_id_input::text, false); -- Cast to text for set_config
+    END;
+    $$ LANGUAGE plpgsql SECURITY DEFINER;
+    ```
+*   **Helper Files:** The helper functions (`executeWithAgencyContext` in `db/rls.ts`, `withRLS`/`withRLSRead` in `actions/db/rls-helpers.ts`) implementing the core mechanism **MUST** be present and used. *(See AI implementation prompt)*.
+
+---
+
+**RLS Rules for Developers:**
+
+**1. Database Schema (`/db/schema/`)**
+
+*   **`agencyId` Column:** Tables requiring agency-level RLS (e.g., `agencyClients`, `credentials`) **MUST** include a non-nullable `agencyId` column that correctly links back to the `agencies` table (e.g., `agencyId: uuid("agency_id").notNull().references(() => agenciesTable.id)`).
+*   **`pgPolicy` Definition (Manual Addition):**
+    *   Due to potential linter issues, `pgPolicy` definitions **MUST** be manually added to the table definition code in the relevant schema files *before* running `npx drizzle-kit generate`.
+    *   Use the naming convention: `{tableName}_agency_isolation_policy`.
+    *   Policy **MUST** be `for: "all"`.
+    *   The `using:` condition **MUST** compare the table's `agencyId` with the session setting:
+        ```typescript
+        // Example for agencyClientsTable (assuming agencyId is uuid)
+        table => [
+          pgPolicy(`${table.name}_agency_isolation_policy`, {
+            for: "all",
+            using: sql`agency_id = current_setting('app.current_agency_id', true)::uuid` // Adjust type if text
+          })
+        ]
+        ```
+    *   For nested tables like `credentials`, the policy might need to check the `agencyId` via the parent `agencyClient` *unless* `credentials` also has its own `agencyId` column (which simplifies the policy).
+
+**2. Server Actions & Database Helpers (`/actions/db/`)**
+
+*   **Mandatory RLS Wrappers:** All database operations (reads/writes) on tables protected by agency RLS **MUST** be wrapped using helpers from `@/actions/db/rls-helpers`:
+    *   `withRLS(async (tx, agencyId, clerkUserId) => { /* Write Logic */ })`
+    *   `withRLSRead(async (tx) => { /* Read Logic */ })`
+*   **NO Manual Agency Filtering:** Within the wrapped function, **DO NOT** add manual `where(eq(table.agencyId, ...))` clauses for RLS purposes. The database policy handles this based on the context set by the wrapper.
+*   **Use Provided Client:** **ALWAYS** use the transaction client (`tx`) passed into your operation function by the wrappers.
+*   **Writes (`INSERT`)**:
+    *   **CRITICAL:** When inserting data using `withRLS`, you **MUST** explicitly set the `agencyId` column in the `.values({})` clause. Use the `agencyId` variable passed *into* the operation function by the `withRLS` helper.
+        ```typescript
+        // Inside withRLS(async (tx, agencyId, clerkUserId) => { ... })
+        await tx.insert(agencyClientsTable).values({
+            // ... other data
+            agencyId: agencyId // Use the agencyId from the helper!
+        }).returning();
+        ```
+*   **Writes (`UPDATE`, `DELETE`)**: Target rows normally (e.g., by `id`). RLS implicitly prevents modification/deletion of rows belonging to other agencies.
+
+**3. Migrations & Testing**
+
+*   After adding/modifying `pgPolicy` in schema files, run `npx drizzle-kit generate`, inspect the generated SQL for `CREATE POLICY` and `ENABLE ROW LEVEL SECURITY`, then run `npx drizzle-kit migrate`.
+*   **Test thoroughly** using multiple Clerk users assigned to *different* agencies to verify they can only access/modify their own agency's data.

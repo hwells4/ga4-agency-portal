@@ -171,10 +171,10 @@
 | ID | Task | Description | PRD Ref | Dependencies | Status |
 |----|------|-------------|---------|--------------|--------|
 | 2.14 | Configure Clerk auth | Set up authentication with Clerk | F2.1, S2.1 | 2.10 | 🔄 |
-| 2.15 | Implement Server Actions | Create CRUD operations in actions/db/ | F2.2 | 2.13 | 🔄 |
+| 2.15 | Implement Server Actions | Create CRUD operations in actions/db/ | F2.2 | 2.13 | ✅ |
 | 2.16 | Add credential handling | Implement secure credential storage/retrieval | T2.3, S2.3 | 2.15 | 🔄 |
-| 2.17 | Enforce data isolation | Add agency boundary checks to all queries | F2.4, S2.2 | 2.15 | 🔄 |
-| 2.17.1 | Setup Supabase RLS | Define and apply Row Level Security policies for multi-tenancy | S2.2, S3.1 | 2.13, 2.14 | 🔄 |
+| 2.17 | Enforce data isolation | Add agency boundary checks to all queries | F2.4, S2.2 | 2.15 | ✅ |
+| 2.17.1 | Setup Supabase RLS | Define and apply Row Level Security policies for multi-tenancy | S2.2, S3.1 | 2.13, 2.14 | ✅ |
 
 #### Internal Credential API Enhancement
 
@@ -201,8 +201,9 @@
 
 | ID | Task | Description | PRD Ref | Dependencies | Status |
 |----|------|-------------|---------|--------------|--------|
-| 2.20 | Write backend tests | Test Server Actions and API logic | F2.2, T2.4 | 2.18 | 🔄 |
-| 2.21 | Test Portal UI | Manually test the complete UI flow | F2.1 | 2.19.5 | 🔄 |
+| 2.20 | Write backend tests | Test Server Actions | F2.2, T2.4 | 2.18 | 🔄 |
+| 2.21 | Write backend tests | Test API logic | | F2.2, T2.4 | 2.18 | 🔄 |
+| 2.22 | Test Portal UI | Manually test the complete UI flow | F2.1 | 2.19.5 | 🔄 |
 
 ### Repository 1: MCP Server Updates <a name="repo1-phase2"></a>
 

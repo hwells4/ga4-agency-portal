@@ -15,6 +15,13 @@
       "when": 1745122455654,
       "tag": "0001_good_hawkeye",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1745126854192,
+      "tag": "0002_sloppy_raza",
+      "breakpoints": true
     }
   ]
 }
