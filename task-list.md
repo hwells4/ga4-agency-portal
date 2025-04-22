@@ -162,7 +162,7 @@
 
 | ID | Task | Description | PRD Ref | Dependencies | Status |
 |----|------|-------------|---------|--------------|--------|
-| 2.11 | Configure Drizzle ORM | Set up connection to PostgreSQL/Supabase | T2.2 | 2.10 | 🔄 |
+| 2.11 | Configure Drizzle ORM | Set up connection to PostgreSQL/Supabase | T2.2 | 2.10 | ✅ |
 | 2.12 | Define database schemas | Create schemas for Agencies, AgencyClients, Credentials | T2.2 | 2.11 | ✅ |
 | 2.13 | Run migrations | Execute npx drizzle-kit generate/migrate | T2.2 | 2.12 | ✅ |
 
@@ -170,7 +170,7 @@
 
 | ID | Task | Description | PRD Ref | Dependencies | Status |
 |----|------|-------------|---------|--------------|--------|
-| 2.14 | Configure Clerk auth | Set up authentication with Clerk | F2.1, S2.1 | 2.10 | 🔄 |
+| 2.14 | Configure Clerk auth | Set up authentication with Clerk | F2.1, S2.1 | 2.10 | ✅ |
 | 2.15 | Implement Server Actions | Create CRUD operations in actions/db/ | F2.2 | 2.13 | ✅ |
 | 2.16 | Add credential handling | Implement secure credential storage/retrieval | T2.3, S2.3 | 2.15 | 🔄 |
 | 2.17 | Enforce data isolation | Add agency boundary checks to all queries | F2.4, S2.2 | 2.15 | ✅ |
