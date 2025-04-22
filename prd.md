@@ -172,10 +172,10 @@ End-user client configuration (Cursor, Claude) is done via a single command usin
 
 | ID | Requirement | Description |
 |----|-------------|-------------|
-| (R2) F2.1 | Agency Portal V1 | Implement core web UI based on template:<br>- Agency Login/Signup (Clerk)<br>- Dashboard to list configured Agency Clients<br>- Form to add/edit Agency Clients (Client Name, Client Identifier, GA4 Property ID)<br>- Secure mechanism to upload Service Account JSON key for each client<br>- Display credential status (e.g., "Uploaded", "Validated - Optional")<br>- Generate the npx install-mcp ... command (points to the single SSE URL) |
-| (R2) F2.2 | Credential Backend | Implement full database schema (Agencies, AgencyClients, Credentials using Drizzle) and backend logic (Next.js Server Actions) for CRUD operations. Integrate secure storage (Secrets Manager or DB encryption) for uploaded credentials. |
-| (R2) T2.4 | Secure Internal Credential API | Enhance the internal API (/api/internal/get-creds) to:<br>- Accept client_identifier<br>- Perform secure lookup in the database for the correct property_id and credential reference/data<br>- Implement robust authentication/authorization (ensure only the MCP server can call, perhaps based on agency context if needed later) |
-| (R1) F2.3 | Update MCP Query Tool | Fully integrate query_ga4_report to use the client_identifier passed from the LLM client to call the secure internal API (T2.4) and get dynamic credentials for the GA4 call. Implement robust error handling for credential lookup failures. |
+| (R2) F2.1 | Agency Portal V1 | Implement core web UI based on template:<br>- Agency Login/Signup (Clerk)<br>- Dashboard to list configured Agency Clients<br>- Form to add/edit Agency Clients (Client Name, **Client Identifier**, **GA4 Property ID**)<br>- **Trigger Nango connection flow** for each client and store the resulting **Nango Connection ID** associated with the client record.<br>- Display connection status (e.g., "Connected", "Needs Authentication")<br>- Generate the npx install-mcp ... command (points to the single SSE URL) |
+| (R2) F2.2 | Credential Backend | Implement full database schema (Agencies, AgencyClients, Credentials using Drizzle) and backend logic (Next.js Server Actions) for CRUD operations. **Database schema includes `nango_connection_id` field for each AgencyClient.** |
+| (R2) T2.4 | Secure Internal Credential API (Get Connection Details) | Enhance the internal API (e.g., `/api/internal/get-connection-details`) to:<br>- Accept `client_identifier`<br>- Perform secure lookup in the database for the correct `property_id` and `nango_connection_id`<br>- Implement robust authentication/authorization (ensure only the MCP server can call)<br>- **Return BOTH `property_id` and `nango_connection_id`.** |
+| (R1) F2.3 | Update MCP Query Tool | Update `query_ga4_report` to accept `client_identifier`. Call the secure internal API (T2.4) to get `property_id` and `nango_connection_id`. Use the `nango_connection_id` to **call the public Nango API** to fetch the access token. Use the token and `property_id` for the GA4 call. Implement robust error handling for credential lookup failures (internal and Nango). |
 | (R2) F2.4 | Agency Data Isolation | Ensure DB queries and API logic strictly enforce agency boundaries |
 
 #### Technical Requirements
@@ -183,9 +183,10 @@ End-user client configuration (Cursor, Claude) is done via a single command usin
 | ID | Requirement | Description |
 |----|-------------|-------------|
 | (R2) T2.1 | Portal backend logic | Full implementation of Portal backend logic |
-| (R2) T2.2 | Drizzle schema | Drizzle schema implementation and migrations |
-| (R2) T2.3 | Secure credential flow | Secure credential storage/retrieval flow fully implemented |
-| (R1/R2) T4.5 | API Security | Implement proper internal API security mechanism |
+| (R2) T2.2 | Drizzle schema | Drizzle schema implementation and migrations (including `nango_connection_id`) |
+| (R2) T2.3 | Secure credential flow | **Secure storage of Nango Connection IDs** and associated metadata in the database. |
+| (R1/R2) T4.5 | API Security | Implement proper internal API security mechanism (Shared Secret Header) |
+| **(R1) T2.5** | **Nango API Client (Repo 1)** | **Implement client in Repo 1 to call the public Nango API (`/connection/{id}`) to fetch credentials using a connection ID.** |
 
 #### Security Requirements
 
@@ -193,8 +194,9 @@ End-user client configuration (Cursor, Claude) is done via a single command usin
 |----|-------------|-------------|
 | (R2) S2.1 | Portal authentication | Secure Agency Portal authentication |
 | (R2) S2.2 | Data isolation | Enforce data isolation between agencies |
-| (R2) S2.3 | Credential handling | Robust secure storage and handling of GA4 credentials |
+| (R2) S2.3 | Credential handling | **Secure handling of Nango Connection IDs** and associated metadata. |
 | (R1/R2) S2.4 | Secure communication | Secure communication channel between MCP server and internal credential API |
+| **(R1) S2.5** | **Nango API Security (Repo 1)** | **Securely store and use `NANGO_SECRET_KEY` from environment variables when calling the public Nango API. Do not log the key.** |
 
 ### Phase 3: Enhanced GA4 Interaction & UX
 
@@ -254,17 +256,18 @@ End-user client configuration (Cursor, Claude) is done via a single command usin
 
 ## Technical Architecture Overview
 
-- **Repo 1 (MCP Server):** Python/fastmcp. Handles MCP protocol, defines GA4 tools, calls Internal Credential API, calls GA4 Data API. Runs via SSE.
-- **Repo 2 (Portal/Backend):** Node.js/Next.js/React (based on mckays-app-template). Handles Agency Auth (Clerk), Agency/Client/Credential CRUD via Server Actions, uses Postgres/Drizzle, provides secure Internal Credential API endpoint for Repo 1.
+- **Repo 1 (MCP Server):** Python/fastmcp. Handles MCP protocol, defines GA4 tools, **calls Internal Connection Details API (Repo 2) to get mapping**, **calls public Nango API for token**, calls GA4 Data API. Runs via SSE.
+- **Repo 2 (Portal/Backend):** Node.js/Next.js/React (based on mckays-app-template). Handles Agency Auth (Clerk), Agency/Client/Credential CRUD via Server Actions **(including storing Property ID <-> Nango Connection ID mapping)**, uses Postgres/Drizzle, provides secure Internal Connection Details API endpoint for Repo 1.
 - **Database:** PostgreSQL (e.g., Supabase).
-- **Secrets:** Cloud Provider Secrets Manager or equivalent secure storage.
+- **Secrets:** Cloud Provider Secrets Manager or equivalent secure storage. **Repo 1 needs Nango Secret Key.**
 - **Client Config:** npx install-mcp.
 
 ## Security Considerations Summary
 
-- Credential Security (Storage & Retrieval) is paramount.
-- Secure transport (HTTPS) for all external endpoints (SSE, Portal).
+- Credential Security (Storage & Retrieval) is paramount **(focus on Nango Connection ID handling in Repo 2)**.
+- Secure transport (HTTPS) for all external endpoints (SSE, Portal, **Nango API**).
 - Secure communication & authentication between MCP Server and Internal Credential API.
+- **Secure handling and usage of Nango Secret Key in Repo 1.**
 - Secure Agency Portal authentication (via Clerk).
 - Strict multi-tenant data isolation/authorization.
 - GA4 API Rate Limit handling.
@@ -293,3 +296,4 @@ End-user client configuration (Cursor, Claude) is done via a single command usin
 - Choice of task queue if needed for rate limiting.
 - Need for billing/subscription integration (template has Stripe).
 - Long-term credential rotation/refresh strategy.
+- Dynamic Property Discovery via Service Account: Should the service allow querying any property accessible by a single uploaded service account key? This would require integrating the GA4 Admin API (for discovery) and potentially modifying the MCP client interaction model (e.g., requiring property ID in queries), contrasting with the current design of mapping client_identifiers to specific properties in the portal.

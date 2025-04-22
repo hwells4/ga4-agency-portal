@@ -33,9 +33,8 @@ export async function executeWithAgencyContext<T>(
     // Call the SQL function to set the session variable
     // Ensures the agency_id is correctly passed as text
     await tx.execute(sql`SELECT set_current_agency_id(${agencyId});`)
-
     // Execute the actual database operation using the transaction client
-    const result = await operation(tx)
+    const result = await operation(tx as unknown as typeof db)
 
     // The transaction commits automatically if no errors occurred.
     // The session variable 'app.current_agency_id' is automatically cleared

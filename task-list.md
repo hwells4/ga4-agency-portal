@@ -65,34 +65,36 @@
 
 | ID | Task | Description | PRD Ref | Dependencies | Status |
 |----|------|-------------|---------|--------------|--------|
-| 1.5 | Define fetch_credentials function | `async def fetch_credentials(client_identifier: str, api_url: str, api_secret: str) -> dict \| None` | T1.4 | 1.4 | ✅ |
+| 1.5 | Define fetch_connection_details function | `async def fetch_connection_details(client_identifier: str, api_url: str, api_secret: str) -> dict \| None`. **Should return dict with `property_id` and `nango_connection_id`.** | T1.4 | 1.4 | ✅ |
 | 1.6 | Implement HTTP GET request | Use httpx to make HTTP GET to api_url | T1.4 | 1.5 | ✅ |
 | 1.7 | Add security header | Add X-Internal-Secret header using api_secret | S1.3 | 1.6 | ✅ |
 | 1.8 | Implement error handling | Handle HTTP errors (401, 404, 500) and connection errors | T1.4 | 1.6 | ✅ |
-| 1.9 | Parse JSON response | Parse successful JSON response, return credential data dict or None | T1.4 | 1.8 | ✅ |
+| 1.9 | Parse JSON response | Parse successful JSON response, return dict with `property_id`, `nango_connection_id` or None | T1.4 | 1.8 | ✅ |
 
 #### GA4 Client Adapter (ga4_client_adapter.py)
 
 | ID | Task | Description | PRD Ref | Dependencies | Status |
 |----|------|-------------|---------|--------------|--------|
-| 1.10 | Define execute_ga4_run_report function | `async def execute_ga4_run_report(credentials_info: dict, property_id: str, report_request_args: dict) -> dict \| str` | F1.2 | 1.4 | ✅ |
-| 1.11 | Initialize GA4 client | Implement BetaAnalyticsDataClient initialization with credentials | F1.2 | 1.10 | ✅ |
+| 1.10 | Define execute_ga4_run_report function | `async def execute_ga4_run_report(access_token: str, property_id: str, report_request_args: dict) -> dict \| str` | F1.2 | 1.4 | ✅ |
+| 1.11 | Initialize GA4 client | Implement BetaAnalyticsDataClient initialization **using `google.oauth2.credentials.Credentials(token=access_token)`** | F1.2 | 1.10 | ✅ |
 | 1.12 | Construct RunReportRequest | Build request payload from property_id and report_request_args | F1.2 | 1.11 | ✅ |
 | 1.13 | Execute GA4 API call | Call client.run_report within try/except block | F1.2 | 1.12 | ✅ |
 | 1.14 | Parse response | Convert RunReportResponse to structured format | F1.2 | 1.13 | ✅ |
 | 1.15 | Add error handling | Handle GoogleAPIError exceptions with user-friendly messages | F1.2 | 1.13 | ✅ |
+| 1.15.1 | Add `google-auth` dependency | Add `google-auth` to `pyproject.toml` for token handling | T2.5 (Implicit) | 1.3 | ✅ |
 
 #### Core GA4 MCP Tool (tools.py)
 
 | ID | Task | Description | PRD Ref | Dependencies | Status |
 |----|------|-------------|---------|--------------|--------|
 | 1.16 | Define query_ga4_report tool | Create function decorated with @mcp.tool() | F1.2 | 1.4 | ✅ |
-| 1.17 | Define tool parameters | Add parameters: ctx, client_identifier, metrics, dimensions, date_range, etc. | F1.2 | 1.16 | ✅ |
-| 1.18 | Read environment variables | Get Internal API URL and Secret from env vars | F1.2 | 1.17 | ✅ |
-| 1.19 | Call fetch_credentials | Use internal_api_client to get credentials, handle errors | F1.2 | 1.9, 1.18 | ✅ |
-| 1.20 | Extract credential data | Parse property_id and credential info from response | F1.2 | 1.19 | ✅ |
+| 1.17 | Define tool parameters | **Add parameter `client_identifier: str`**. Other params: metrics, dimensions, date_range, etc. | F1.2 | 1.16 | ✅ |
+| 1.18 | Read environment variables | **Get Internal API URL/Secret**, **Nango Base URL/Secret/Integration ID** from env vars | F1.2 | 1.17 | ✅ |
+| 1.19 | Call fetch_connection_details | Use **internal_api_client** to get **`property_id` and `nango_connection_id`**, handle errors | F1.2 | 1.9, 1.18 | ✅ |
+| 1.20 | Extract connection data | Parse `property_id` and `nango_connection_id` from internal API response | F1.2 | 1.19 | ✅ |
+| 1.20.1 | Call Nango API Client | **Use `nango_client.fetch_nango_credentials` with fetched `nango_connection_id` to get `access_token`, handle errors** | F2.3, T2.5 | 1.20, 1.35 | ✅ |
 | 1.21 | Prepare request arguments | Build report_request_args dict from tool parameters | F1.2 | 1.20 | ✅ |
-| 1.22 | Call GA4 adapter | Execute ga4_client_adapter.execute_ga4_run_report | F1.2 | 1.15, 1.21 | ✅ |
+| 1.22 | Call GA4 adapter | Execute `ga4_client_adapter.execute_ga4_run_report` **passing `access_token` and `property_id`** | F1.2 | 1.15, 1.20.1, 1.21 | ✅ |
 | 1.23 | Return formatted result | Return data/error as JSON string | F1.2 | 1.22 | ✅ |
 
 #### Server Main (main.py)
@@ -106,15 +108,16 @@
 | 1.28 | Configure from env vars | Read PORT and HOST from environment variables | F1.1 | 1.27 | ✅ |
 | 1.29 | Run SSE server | Call mcp.run(transport="sse", host=host, port=port) | T1.3 | 1.28 | ✅ |
 
-#### Deployment & Configuration | Deployed at ga4-mcp-production.up.railway.app
+#### Deployment & Configuration
 
 | ID | Task | Description | PRD Ref | Dependencies | Status |
 |----|------|-------------|---------|--------------|--------|
 | 1.30 | Create dependency file | Create requirements.txt or pyproject.toml | F1.1 | 1.3 | ✅ |
 | 1.31 | Create Dockerfile | Prepare Dockerfile for deployment | F1.1 | 1.30 | ✅ |
 | 1.32 | Deploy to hosting | Deploy to platform like Railway | F1.1 | 1.31 | ✅ |
-| 1.33 | Configure environment | Set INTERNAL_API_URL, INTERNAL_API_SECRET on hosting | F1.1 | 1.32 | ✅ |
-| 1.34 | Document SSE URL | Record the public HTTPS SSE URL for client setup | F1.4 | 1.33 | ✅ | ga4-mcp-production.up.railway.app
+| 1.33 | Configure environment | Set **INTERNAL_API_URL**, **INTERNAL_API_SECRET**, **NANGO_BASE_URL**, **NANGO_SECRET_KEY**, **NANGO_INTEGRATION_ID** on hosting | F1.1 | 1.32 | ✅ |
+| 1.34 | Document SSE URL | Record the public HTTPS SSE URL for client setup | F1.4 | 1.33 | ✅ |
+| 1.35 | Create Nango API Client | Create `src/nango_client.py` with `fetch_nango_credentials` to call public Nango API | T2.5 | 1.4 | ✅ |
 
 ### Repository 2: ga4-agency-portal (Node.js/Next.js) <a name="repo2-phase1"></a>
 
@@ -130,9 +133,9 @@
 
 | ID | Task | Description | PRD Ref | Dependencies | Status |
 |----|------|-------------|---------|--------------|--------|
-| 2.4 | Create API endpoint | Add route.ts in app/api/internal/get-creds/ | T1.6 | 2.3 | ✅ |
+| 2.4 | Create API endpoint | Add route.ts in `app/api/internal/get-connection-details/` (or similar) | T1.6 | 2.3 | ✅ |
 | 2.5 | Implement security check | Verify X-Internal-Secret header against env var | S1.3 | 2.4 | ✅ |
-| 2.6 | Return hardcoded response | Return test propertyId and credentialInfo JSON | T1.6 | 2.5 | ✅ |
+| 2.6 | Return hardcoded response | For MVP, return test **`propertyId` AND test `nangoConnectionId`** JSON | T1.6 | 2.5 | ✅ |
 | 2.7 | Add placeholder comments | Document future DB/credential handling plans | S1.2 | 2.6 | ✅ |
 
 #### Deployment & Configuration
@@ -163,28 +166,27 @@
 | ID | Task | Description | PRD Ref | Dependencies | Status |
 |----|------|-------------|---------|--------------|--------|
 | 2.11 | Configure Drizzle ORM | Set up connection to PostgreSQL/Supabase | T2.2 | 2.10 | ✅ |
-| 2.12 | Define database schemas | Create schemas for Agencies, AgencyClients, Credentials | T2.2 | 2.11 | ✅ |
-| 2.13 | Run migrations | Execute npx drizzle-kit generate/migrate | T2.2 | 2.12 | ✅ |
+| 2.12 | Define database schemas | Create schemas for Agencies, AgencyClients, Credentials. **Ensure AgencyClients schema includes `property_id` and `nango_connection_id`, `nango_provider_config_key`** | T2.2 | 2.11 | ✅ |
+| 2.13 | Run migrations | Execute npx drizzle-kit generate/migrate | T2.2 | 2.12 | 🔄 |
 
 #### Authentication & Backend Logic
 
 | ID | Task | Description | PRD Ref | Dependencies | Status |
 |----|------|-------------|---------|--------------|--------|
 | 2.14 | Configure Clerk auth | Set up authentication with Clerk | F2.1, S2.1 | 2.10 | ✅ |
-| 2.15 | Implement Server Actions | Create CRUD operations in actions/db/ | F2.2 | 2.13 | ✅ |
-| 2.16 | Add credential handling | Implement secure credential storage/retrieval | T2.3, S2.3 | 2.15 | 🔄 |
-| 2.17 | Enforce data isolation | Add agency boundary checks to all queries | F2.4, S2.2 | 2.15 | ✅ |
-| 2.17.1 | Setup Supabase RLS | Define and apply Row Level Security policies for multi-tenancy | S2.2, S3.1 | 2.13, 2.14 | ✅ |
+| 2.15 | Implement Server Actions | Create CRUD operations in actions/db/ | F2.2 | 2.13 | 🔄 |
+| 2.16 | Add Nango connection handling | Implement **Nango connection flow trigger** and storage of `nango_connection_id` in DB | T2.3, S2.3 | 2.15 | ✅ |
+| 2.17 | Enforce data isolation | Add agency boundary checks to all queries | F2.4, S2.2 | 2.15 | 🔄 |
 
 #### Internal Credential API Enhancement
 
 | ID | Task | Description | PRD Ref | Dependencies | Status |
 |----|------|-------------|---------|--------------|--------|
-| 2.18 | Enhance API endpoint | Update endpoint to use real database lookups | T2.4 | 2.17 | 🔄 |
-| 2.18.1 | Accept client_identifier | Use passed client_identifier for lookups | T2.4 | 2.18 | 🔄 |
-| 2.18.2 | Implement DB lookup | Query database for client and credentials | T2.4 | 2.18.1 | 🔄 |
-| 2.18.3 | Return real credentials | Format and return actual property_id and credentials | T2.4 | 2.18.2 | 🔄 |
-| 2.18.4 | Add error handling | Handle not found, unauthorized, etc. | T2.4 | 2.18.3 | 🔄 |
+| 2.18 | Enhance API endpoint | Update endpoint to use real database lookups | T2.4 | 2.17 | ✅ |
+| 2.18.1 | Accept client_identifier | Use passed client_identifier for lookups | T2.4 | 2.18 | ✅ |
+| 2.18.2 | Implement DB lookup | Query database for client to get **`property_id`, `nango_connection_id`, and `nango_provider_config_key`** | T2.4 | 2.18.1 | ✅ |
+| 2.18.3 | Return connection details | Format and return actual `property_id`, `nango_connection_id`, and `nango_provider_config_key` | T2.4 | 2.18.2 | ✅ |
+| 2.18.4 | Add error handling | Handle not found, unauthorized, etc. | T2.4 | 2.18.3 | ✅ |
 
 #### Agency Portal UI
 
@@ -192,34 +194,33 @@
 |----|------|-------------|---------|--------------|--------|
 | 2.19 | Create Portal UI | Build Next.js pages with Shadcn UI | F2.1 | 2.17 | 🔄 |
 | 2.19.1 | Build Agency Dashboard | List view of agency clients | F2.1 | 2.19 | 🔄 |
-| 2.19.2 | Create Client Form | Add/Edit form for client configuration | F2.1 | 2.19.1 | 🔄 |
-| 2.19.3 | Add credential upload | Secure JSON key upload interface | F2.1 | 2.19.2 | 🔄 |
-| 2.19.4 | Show credential status | Display validation status for credentials | F2.1 | 2.19.3 | 🔄 |
+| 2.19.2 | Create Client Form | Add/Edit form for client configuration **(Must include input for ga4PropertyId)** | F2.1 | 2.19.1 | 🔄 |
+| 2.19.3 | Add Nango connection trigger | **Add UI to trigger Nango connection flow** for a specific client record (needs UI work) | F2.1 | 2.19.2 | 🔄 |
+| 2.19.4 | Show connection status | Display validation status for Nango connections (needs UI work) | F2.1 | 2.19.3 | 🔄 |
 | 2.19.5 | Add setup command generator | Create "Copy Setup Command" button | F2.1 | 2.19.4 | 🔄 |
 
 #### Testing
 
 | ID | Task | Description | PRD Ref | Dependencies | Status |
 |----|------|-------------|---------|--------------|--------|
-| 2.20 | Write backend tests | Test Server Actions | F2.2, T2.4 | 2.18 | 🔄 |
-| 2.21 | Write backend tests | Test API logic | | F2.2, T2.4 | 2.18 | 🔄 |
-| 2.22 | Test Portal UI | Manually test the complete UI flow | F2.1 | 2.19.5 | 🔄 |
+| 2.20 | Write backend tests | Test Server Actions and API logic | F2.2, T2.4 | 2.18 | 🔄 |
+| 2.21 | Test Portal UI | Manually test the complete UI flow | F2.1 | 2.19.5 | 🔄 |
 
 ### Repository 1: MCP Server Updates <a name="repo1-phase2"></a>
 
 | ID | Task | Description | PRD Ref | Dependencies | Status |
 |----|------|-------------|---------|--------------|--------|
-| 1.35 | Update query_ga4_report | Handle dynamic credentials from enhanced API | F2.3 | 2.18.4 | 🔄 |
-| 1.36 | Add credential error handling | Handle cases where credentials aren't found/valid | F2.3 | 1.35 | 🔄 |
-| 1.37 | Write credential tests | Add tests for dynamic credential handling | F2.3 | 1.36 | 🔄 |
+| 1.35 | Update query_ga4_report | **(Requires Repo 1 changes - Needs to parse new API response, use Nango key)** | F2.3 | 2.18.4 | 🔄 |
+| 1.36 | Add credential error handling | Handle cases where internal API or Nango API calls fail | F2.3 | 1.35 | 🔄 |
+| 1.37 | Write credential tests | Add tests for dynamic credential handling via internal API and Nango calls | F2.3 | 1.36 | 🔄 |
 
 ### Integration Testing <a name="integration-phase2"></a>
 
 | ID | Task | Description | PRD Ref | Dependencies | Status |
 |----|------|-------------|---------|--------------|--------|
 | 3.7 | Perform E2E test with multiple clients | Test complete flow with real credentials | F2.3, F2.4 | 1.37, 2.21 | 🔄 |
-| 3.7.1 | Configure test clients | Add 2-3 test clients with valid properties/credentials | F2.1 | 3.7 | 🔄 |
-| 3.7.2 | Test client-specific queries | Verify correct property selection based on client_identifier | F2.3 | 3.7.1 | 🔄 |
+| 3.7.1 | Configure test clients | Add 2-3 test clients with valid properties/credentials **(requires UI/actions)** | F2.1 | 3.7 | 🔄 |
+| 3.7.2 | Test client-specific queries | Verify correct property selection based on client_identifier **(requires Repo 1)** | F2.3 | 3.7.1 | 🔄 |
 
 ## Phase 3: Enhanced GA4 Interaction & UX <a name="phase-3-enhanced-ga4-interaction--ux"></a>
 

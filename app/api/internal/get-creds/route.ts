@@ -1,4 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
+import { db } from "@/db/db"
+import { agencyClientsTable } from "@/db/schema"
+import { eq } from "drizzle-orm"
 
 export async function GET(request: NextRequest) {
   const internalSecret = process.env.INTERNAL_API_SHARED_SECRET
@@ -19,39 +22,69 @@ export async function GET(request: NextRequest) {
   }
   if (!receivedSecret || receivedSecret !== internalSecret) {
     console.warn("Invalid or missing secret received for internal API.")
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 }) // Use 401 for unauthorized
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
-  // --- MVP Logic: Return Hardcoded Test Data ---
-  // In later phases, this will perform a database lookup based on a client_identifier
-  // passed perhaps as a query parameter, e.g., request.nextUrl.searchParams.get('clientId')
+  if (!clientIdentifier) {
+    return NextResponse.json(
+      { error: "Missing 'client_identifier' query parameter" },
+      { status: 400 }
+    )
+  }
 
-  console.log("Internal API /get-creds called successfully (MVP)", {
-    clientIdentifier
-  })
+  console.log(
+    `Internal API /get-creds called for client_identifier: ${clientIdentifier}`
+  )
 
-  const testCredentialData = {
-    // Using snake_case to match the expected format in the Python client
-    property_id: "YOUR_TEST_GA4_PROPERTY_ID", // Replace with a real ID if you have one for testing
-    credentials: {
-      // Google Service Account structure needed by google-analytics-data client
-      type: "service_account",
-      project_id: "test-project-id",
-      private_key_id: "fake_key_id",
-      private_key:
-        "-----BEGIN PRIVATE KEY-----\nFAKE_KEY_DATA\n-----END PRIVATE KEY-----\n",
-      client_email:
-        "test-service-account@test-project-id.iam.gserviceaccount.com",
-      client_id: "12345678901234567890",
-      auth_uri: "https://accounts.google.com/o/oauth2/auth",
-      token_uri: "https://oauth2.googleapis.com/token",
-      auth_provider_x509_cert_url: "https://www.googleapis.com/oauth2/v1/certs",
-      client_x509_cert_url:
-        "https://www.googleapis.com/robot/v1/metadata/x509/test-service-account%40test-project-id.iam.gserviceaccount.com"
+  try {
+    // --- Database Lookup Logic ---
+    const client = await db.query.agencyClients.findFirst({
+      where: eq(agencyClientsTable.clientIdentifier, clientIdentifier),
+      columns: {
+        ga4PropertyId: true,
+        nangoConnectionId: true,
+        nangoProviderConfigKey: true // Include the new field
+      }
+    })
+
+    if (!client) {
+      console.warn(
+        `Client not found for identifier: ${clientIdentifier} in internal API.`
+      )
+      return NextResponse.json(
+        { error: `Client not found for identifier: ${clientIdentifier}` },
+        { status: 404 }
+      )
     }
-  }
 
-  return NextResponse.json(testCredentialData, { status: 200 })
+    if (!client.nangoConnectionId || !client.nangoProviderConfigKey) {
+      console.error(
+        `Client ${clientIdentifier} found, but missing Nango details (connectionId or providerConfigKey).`
+      )
+      return NextResponse.json(
+        { error: "Client Nango configuration incomplete." },
+        { status: 500 } // Internal configuration issue
+      )
+    }
+
+    // Prepare response data - use snake_case if Repo 1 expects it
+    const responseData = {
+      property_id: client.ga4PropertyId,
+      nango_connection_id: client.nangoConnectionId,
+      nango_provider_config_key: client.nangoProviderConfigKey // Return the key
+    }
+
+    return NextResponse.json(responseData, { status: 200 })
+  } catch (error: any) {
+    console.error(
+      `Error fetching client details for ${clientIdentifier} in internal API:`,
+      error
+    )
+    return NextResponse.json(
+      { error: "Internal server error retrieving client details." },
+      { status: 500 }
+    )
+  }
 }
 
 // Optional: Add basic handling for other methods if needed, though GET is likely sufficient

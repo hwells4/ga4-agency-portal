@@ -29,6 +29,10 @@ export const agencyClientsTable = pgTable(
     // User-friendly name for the portal UI
     clientName: text("client_name").notNull(),
     ga4PropertyId: text("ga4_property_id").notNull(),
+    // Add Nango connection ID field
+    nangoConnectionId: text("nango_connection_id"), // Task 2.12 & 2.16
+    // Add Nango Provider Config Key field (e.g., 'google-analytics')
+    nangoProviderConfigKey: text("nango_provider_config_key"),
     // Reference to the stored credential (e.g., secret manager ARN, DB encrypted record ID)
     // For now, we'll use a text field. Task 2.16 will refine this.
     credentialReference: text("credential_reference"),
