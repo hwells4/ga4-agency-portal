@@ -60,7 +60,7 @@ export default function TestNangoConnectClient({
   }, [])
 
   const startPolling = useCallback(
-    async (nangoConnectionIdToPoll: string) => {
+    async (clientIdToPoll: string) => {
       clearPolling()
       setIsPolling(true)
       setMessage("Verifying connection with Google... Please wait.")
@@ -85,12 +85,12 @@ export default function TestNangoConnectClient({
 
         pollAttemptsRef.current += 1
         console.log(
-          `Polling attempt ${pollAttemptsRef.current} for ${nangoConnectionIdToPoll}`
+          `Polling attempt ${pollAttemptsRef.current} for ${clientIdToPoll}`
         )
 
         try {
           const response = await fetch(
-            `/api/nango/check-status/${nangoConnectionIdToPoll}`,
+            `/api/nango/check-status/${clientIdToPoll}`,
             { credentials: "include" }
           )
           if (!response.ok) {
@@ -98,6 +98,22 @@ export default function TestNangoConnectClient({
               console.error(
                 `Polling check failed: 401 Unauthorized. Session likely invalid or missing.`
               )
+              return
+            }
+            if (response.status === 404) {
+              console.error(
+                `Polling check failed: 404 Not Found. Client ID ${clientIdToPoll} not found by API.`
+              )
+              clearPolling()
+              setIsLoading(false)
+              setErrorMessage(
+                `Client record not found for ID: ${clientIdToPoll}. Please verify the ID.`
+              )
+              toast({
+                title: "Error",
+                description: `Client record not found for ID: ${clientIdToPoll}.`,
+                variant: "destructive"
+              })
               return
             }
             console.warn(`Polling check failed with status: ${response.status}`)
@@ -116,7 +132,7 @@ export default function TestNangoConnectClient({
             })
             setMessage("Connection confirmed. Fetching GA4 properties...")
 
-            const fetchResult = await fetchAction(nangoConnectionIdToPoll)
+            const fetchResult = await fetchAction(clientIdToPoll)
             if (fetchResult.isSuccess) {
               console.log(
                 "---------------------------------------------------------"
@@ -193,10 +209,9 @@ export default function TestNangoConnectClient({
                 connectionId
               )
               actualNangoConnectionId = connectionId
-
               if (connectionId !== initialAgencyClientId) {
                 console.warn(
-                  `Received connectionId (${connectionId}) does not match expected initial ID (${initialAgencyClientId}). Will use received ID for polling.`
+                  `Received connectionId (${connectionId}) does not match expected initial ID (${initialAgencyClientId}).`
                 )
               }
               setMessage(
@@ -217,16 +232,16 @@ export default function TestNangoConnectClient({
       await nangoAuthPromise
 
       if (!actualNangoConnectionId) {
-        throw new Error(
-          "Nango connection process did not return a connection ID."
+        console.warn(
+          "Nango connection process did not explicitly return a connection ID via 'connect' event."
         )
       }
 
       console.log(
-        `Nango connection reported. Starting polling for actual ID: ${actualNangoConnectionId}...`
+        `Nango connection process finished. Starting polling using initial client ID: ${initialAgencyClientId}...`
       )
 
-      await startPolling(actualNangoConnectionId)
+      await startPolling(initialAgencyClientId)
     } catch (error: any) {
       console.error("Connect & Fetch Error:", error)
       const errorMsg = error.message || "An error occurred during connection."
@@ -259,7 +274,7 @@ export default function TestNangoConnectClient({
           disabled={isLoading || isPolling}
         />
         <p className="text-muted-foreground mt-1 text-xs">
-          This ID is used to link the connection in Nango.
+          This ID must match an existing record in the database.
         </p>
       </div>
       <div>
