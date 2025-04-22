@@ -60,7 +60,7 @@ export default function TestNangoConnectClient({
   }, [])
 
   const startPolling = useCallback(
-    async (clientIdToPoll: string) => {
+    async (nangoConnectionIdToPoll: string) => {
       clearPolling()
       setIsPolling(true)
       setMessage("Verifying connection with Google... Please wait.")
@@ -73,29 +73,35 @@ export default function TestNangoConnectClient({
           const errorMsg =
             "Connection status check timed out. Please try again."
           setErrorMessage(errorMsg)
-          setMessage(null) // Clear progress message
+          setMessage(null)
           toast({
             title: "Error",
             description: errorMsg,
             variant: "destructive"
           })
-          setIsLoading(false) // Stop loading indicator on timeout
+          setIsLoading(false)
           return
         }
 
         pollAttemptsRef.current += 1
         console.log(
-          `Polling attempt ${pollAttemptsRef.current} for ${clientIdToPoll}`
+          `Polling attempt ${pollAttemptsRef.current} for ${nangoConnectionIdToPoll}`
         )
 
         try {
           const response = await fetch(
-            `/api/nango/check-status/${clientIdToPoll}`
+            `/api/nango/check-status/${nangoConnectionIdToPoll}`,
+            { credentials: "include" }
           )
           if (!response.ok) {
+            if (response.status === 401) {
+              console.error(
+                `Polling check failed: 401 Unauthorized. Session likely invalid or missing.`
+              )
+              return
+            }
             console.warn(`Polling check failed with status: ${response.status}`)
-            // Optionally handle specific non-OK statuses if needed
-            return // Continue polling unless it's a definitive error
+            return
           }
 
           const data: CheckStatusResponse = await response.json()
@@ -110,8 +116,7 @@ export default function TestNangoConnectClient({
             })
             setMessage("Connection confirmed. Fetching GA4 properties...")
 
-            // Now fetch the properties using the passed fetchAction
-            const fetchResult = await fetchAction(clientIdToPoll)
+            const fetchResult = await fetchAction(nangoConnectionIdToPoll)
             if (fetchResult.isSuccess) {
               console.log(
                 "---------------------------------------------------------"
@@ -136,12 +141,10 @@ export default function TestNangoConnectClient({
                 variant: "destructive"
               })
             }
-            setIsLoading(false) // Stop loading indicator after success/fetch attempt
+            setIsLoading(false)
           }
-          // If not connected, the interval continues
         } catch (error) {
           console.error("Error during polling:", error)
-          // Let timeout handle persistent errors
         }
       }, POLLING_INTERVAL_MS)
     },
@@ -153,14 +156,13 @@ export default function TestNangoConnectClient({
     setIsLoading(true)
     setMessage(null)
     setErrorMessage(null)
-    console.log("Attempting to connect for client:", agencyClientId)
-    const currentAgencyClientId = agencyClientId
+    const initialAgencyClientId = agencyClientId
+    console.log("Attempting to connect for client:", initialAgencyClientId)
 
     try {
-      // 1. Initiate Nango connection
       console.log("Calling initiateAction...")
       const initiateResult = await initiateAction(
-        currentAgencyClientId,
+        initialAgencyClientId,
         agencyId,
         providerConfigKey
       )
@@ -172,11 +174,12 @@ export default function TestNangoConnectClient({
       const sessionToken = initiateResult.data.sessionToken
       console.log("Received session token:", sessionToken)
 
-      // 2. Open Nango Frontend UI
       const nangoFrontend = new Nango()
       setMessage(
         "Nango popup should open. Please complete Google authentication."
       )
+
+      let actualNangoConnectionId: string | null = null
 
       const nangoAuthPromise = new Promise<string>((resolve, reject) => {
         nangoFrontend.openConnectUI({
@@ -189,9 +192,11 @@ export default function TestNangoConnectClient({
                 "Nango connection successful via frontend SDK! Connection ID:",
                 connectionId
               )
-              if (connectionId !== currentAgencyClientId) {
+              actualNangoConnectionId = connectionId
+
+              if (connectionId !== initialAgencyClientId) {
                 console.warn(
-                  `Received connectionId (${connectionId}) does not match expected (${currentAgencyClientId}).`
+                  `Received connectionId (${connectionId}) does not match expected initial ID (${initialAgencyClientId}). Will use received ID for polling.`
                 )
               }
               setMessage(
@@ -201,25 +206,27 @@ export default function TestNangoConnectClient({
             } else if (event.type === "close") {
               console.log("Nango popup closed without connect event.")
             } else if (event.type === "error") {
-              // Use type assertion as a workaround for payload type inference issue
-              const errorPayload = (event as any).payload
+              const errorPayload = event.payload
               console.error("Nango UI Error Event:", errorPayload)
-              // Ensure errorPayload exists and has a message property before accessing it
-              const errorMessage = errorPayload?.message || "Nango UI error."
-              reject(new Error(errorMessage))
+              reject(new Error(errorPayload?.message || "Nango UI error."))
             }
           }
         })
       })
 
-      // Wait for Nango connection popup process to signal connection
-      const connectionId = await nangoAuthPromise
+      await nangoAuthPromise
+
+      if (!actualNangoConnectionId) {
+        throw new Error(
+          "Nango connection process did not return a connection ID."
+        )
+      }
+
       console.log(
-        `Nango connection reported for ID ${connectionId}. Starting polling...`
+        `Nango connection reported. Starting polling for actual ID: ${actualNangoConnectionId}...`
       )
 
-      // 3. Start Polling (instead of direct fetch)
-      await startPolling(currentAgencyClientId)
+      await startPolling(actualNangoConnectionId)
     } catch (error: any) {
       console.error("Connect & Fetch Error:", error)
       const errorMsg = error.message || "An error occurred during connection."
@@ -241,7 +248,7 @@ export default function TestNangoConnectClient({
   return (
     <div className="space-y-4 rounded border p-4">
       <div>
-        <Label htmlFor="agencyClientId">Agency Client ID (UUID)</Label>
+        <Label htmlFor="agencyClientId">Agency Client ID (To Initiate)</Label>
         <Input
           id="agencyClientId"
           value={agencyClientId}
@@ -251,6 +258,9 @@ export default function TestNangoConnectClient({
           placeholder="Enter the agency_clients.id UUID"
           disabled={isLoading || isPolling}
         />
+        <p className="text-muted-foreground mt-1 text-xs">
+          This ID is used to link the connection in Nango.
+        </p>
       </div>
       <div>
         <Label htmlFor="agencyId">Agency ID (User ID)</Label>
