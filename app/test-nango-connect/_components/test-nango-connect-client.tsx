@@ -1,10 +1,11 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect, useRef, useCallback } from "react"
 import Nango from "@nangohq/frontend"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { useToast } from "@/components/ui/use-toast"
 import { ActionState } from "@/types"
 
 // DO NOT import store action here
@@ -24,21 +25,136 @@ interface TestNangoConnectClientProps {
   fetchAction: FetchActionType
 }
 
+// Define the expected structure of the API response
+interface CheckStatusResponse {
+  isConnected: boolean
+  error?: string
+}
+
 export default function TestNangoConnectClient({
   initiateAction,
   fetchAction
 }: TestNangoConnectClientProps) {
+  const { toast } = useToast()
   const [agencyClientId, setAgencyClientId] = useState("")
   const [agencyId, setAgencyId] = useState("")
   const [providerConfigKey, setProviderConfigKey] = useState("google-analytics")
   const [isLoading, setIsLoading] = useState(false)
+  const [isPolling, setIsPolling] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
+  const [errorMessage, setErrorMessage] = useState<string | null>(null)
+
+  const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null)
+  const pollAttemptsRef = useRef(0)
+  const MAX_POLL_ATTEMPTS = 10 // e.g., 10 attempts * 3 seconds = 30 seconds timeout
+  const POLLING_INTERVAL_MS = 3000 // Poll every 3 seconds
+
+  // --- Polling Logic --- START ---
+  const clearPolling = useCallback(() => {
+    if (pollingIntervalRef.current) {
+      clearInterval(pollingIntervalRef.current)
+      pollingIntervalRef.current = null
+    }
+    setIsPolling(false)
+    pollAttemptsRef.current = 0
+  }, [])
+
+  const startPolling = useCallback(
+    async (clientIdToPoll: string) => {
+      clearPolling()
+      setIsPolling(true)
+      setMessage("Verifying connection with Google... Please wait.")
+      pollAttemptsRef.current = 0
+      setErrorMessage(null)
+
+      pollingIntervalRef.current = setInterval(async () => {
+        if (pollAttemptsRef.current >= MAX_POLL_ATTEMPTS) {
+          clearPolling()
+          const errorMsg =
+            "Connection status check timed out. Please try again."
+          setErrorMessage(errorMsg)
+          setMessage(null) // Clear progress message
+          toast({
+            title: "Error",
+            description: errorMsg,
+            variant: "destructive"
+          })
+          setIsLoading(false) // Stop loading indicator on timeout
+          return
+        }
+
+        pollAttemptsRef.current += 1
+        console.log(
+          `Polling attempt ${pollAttemptsRef.current} for ${clientIdToPoll}`
+        )
+
+        try {
+          const response = await fetch(
+            `/api/nango/check-status/${clientIdToPoll}`
+          )
+          if (!response.ok) {
+            console.warn(`Polling check failed with status: ${response.status}`)
+            // Optionally handle specific non-OK statuses if needed
+            return // Continue polling unless it's a definitive error
+          }
+
+          const data: CheckStatusResponse = await response.json()
+
+          if (data.isConnected) {
+            console.log("Polling successful: Connection confirmed.")
+            clearPolling()
+            toast({
+              title: "Success",
+              description:
+                "Client connected successfully. Fetching properties..."
+            })
+            setMessage("Connection confirmed. Fetching GA4 properties...")
+
+            // Now fetch the properties using the passed fetchAction
+            const fetchResult = await fetchAction(clientIdToPoll)
+            if (fetchResult.isSuccess) {
+              console.log(
+                "---------------------------------------------------------"
+              )
+              console.log("FETCHED GA4 PROPERTIES (Browser Console):")
+              console.log(JSON.stringify(fetchResult.data, null, 2))
+              console.log(
+                "---------------------------------------------------------"
+              )
+              setMessage(
+                `Successfully fetched ${fetchResult.data.length} properties. Check browser console.`
+              )
+              setErrorMessage(null)
+            } else {
+              const errorMsg =
+                fetchResult.message || "Failed to fetch GA4 properties."
+              setErrorMessage(errorMsg)
+              setMessage(null)
+              toast({
+                title: "Error Fetching Properties",
+                description: errorMsg,
+                variant: "destructive"
+              })
+            }
+            setIsLoading(false) // Stop loading indicator after success/fetch attempt
+          }
+          // If not connected, the interval continues
+        } catch (error) {
+          console.error("Error during polling:", error)
+          // Let timeout handle persistent errors
+        }
+      }, POLLING_INTERVAL_MS)
+    },
+    [clearPolling, fetchAction, toast]
+  )
+  // --- Polling Logic --- END ---
 
   const handleConnectAndFetch = async () => {
     setIsLoading(true)
     setMessage(null)
-    console.log("Attempting to connect and fetch for client:", agencyClientId)
-    const currentAgencyClientId = agencyClientId // Capture value for use in callbacks
+    setErrorMessage(null)
+    console.log("Attempting to connect for client:", agencyClientId)
+    const currentAgencyClientId = agencyClientId
 
     try {
       // 1. Initiate Nango connection
@@ -59,13 +175,13 @@ export default function TestNangoConnectClient({
       // 2. Open Nango Frontend UI
       const nangoFrontend = new Nango()
       setMessage(
-        "Nango popup should open. Please complete Google authentication. Backend webhook MUST be configured to store connection."
+        "Nango popup should open. Please complete Google authentication."
       )
 
       const nangoAuthPromise = new Promise<string>((resolve, reject) => {
         nangoFrontend.openConnectUI({
           sessionToken: sessionToken,
-          onEvent: event => {
+          onEvent: (event: any) => {
             console.log("Nango UI Event:", event)
             if (event.type === "connect") {
               const connectionId = event.payload.connectionId
@@ -73,54 +189,54 @@ export default function TestNangoConnectClient({
                 "Nango connection successful via frontend SDK! Connection ID:",
                 connectionId
               )
+              if (connectionId !== currentAgencyClientId) {
+                console.warn(
+                  `Received connectionId (${connectionId}) does not match expected (${currentAgencyClientId}).`
+                )
+              }
               setMessage(
-                "Nango connection successful via popup! Waiting for backend webhook to store ID..."
+                "Nango popup closed. Starting connection verification..."
               )
-              resolve(connectionId) // Resolve the promise with connectionId
+              resolve(connectionId)
             } else if (event.type === "close") {
-              console.error("Nango popup closed or authorization failed.")
-              reject(new Error("Nango authorization cancelled or failed."))
+              console.log("Nango popup closed without connect event.")
+            } else if (event.type === "error") {
+              // Use type assertion as a workaround for payload type inference issue
+              const errorPayload = (event as any).payload
+              console.error("Nango UI Error Event:", errorPayload)
+              // Ensure errorPayload exists and has a message property before accessing it
+              const errorMessage = errorPayload?.message || "Nango UI error."
+              reject(new Error(errorMessage))
             }
           }
         })
       })
 
-      // Wait for Nango connection popup process to finish
+      // Wait for Nango connection popup process to signal connection
       const connectionId = await nangoAuthPromise
-      console.log(`Nango connection attempt completed for ID ${connectionId}.`)
-
-      // 3. Fetch GA4 properties (assuming webhook worked)
-      setMessage(
-        "Connection attempt done. Now trying to fetch properties (requires webhook to have worked)..."
+      console.log(
+        `Nango connection reported for ID ${connectionId}. Starting polling...`
       )
-      // Give webhook a bit more time
-      await new Promise(resolve => setTimeout(resolve, 3000))
 
-      console.log("Calling fetchAction...")
-      const fetchResult = await fetchAction(currentAgencyClientId) // Use captured ID
-
-      if (fetchResult.isSuccess) {
-        console.log("---------------------------------------------------------")
-        console.log("FETCHED GA4 PROPERTIES (Browser Console):")
-        console.log(JSON.stringify(fetchResult.data, null, 2))
-        console.log("---------------------------------------------------------")
-        setMessage(
-          `Successfully fetched ${fetchResult.data.length} properties. Check browser console.`
-        )
-      } else {
-        // If this fails, it's likely the webhook didn't update the DB
-        throw new Error(
-          fetchResult.message ||
-            "Failed to fetch GA4 properties after connection (Likely webhook issue)."
-        )
-      }
+      // 3. Start Polling (instead of direct fetch)
+      await startPolling(currentAgencyClientId)
     } catch (error: any) {
       console.error("Connect & Fetch Error:", error)
-      setMessage(`Error: ${error.message}`)
-    } finally {
+      const errorMsg = error.message || "An error occurred during connection."
+      setErrorMessage(errorMsg)
+      setMessage(null)
+      toast({
+        title: "Connection Failed",
+        description: errorMsg,
+        variant: "destructive"
+      })
       setIsLoading(false)
     }
   }
+
+  useEffect(() => {
+    return () => clearPolling()
+  }, [clearPolling])
 
   return (
     <div className="space-y-4 rounded border p-4">
@@ -133,7 +249,7 @@ export default function TestNangoConnectClient({
           type="text"
           required
           placeholder="Enter the agency_clients.id UUID"
-          disabled={isLoading}
+          disabled={isLoading || isPolling}
         />
       </div>
       <div>
@@ -145,7 +261,7 @@ export default function TestNangoConnectClient({
           type="text"
           required
           placeholder="Enter the agency_clients.agency_id (Clerk User ID)"
-          disabled={isLoading}
+          disabled={isLoading || isPolling}
         />
       </div>
       <div>
@@ -157,25 +273,30 @@ export default function TestNangoConnectClient({
           type="text"
           required
           placeholder="e.g., google-analytics"
-          disabled={isLoading}
+          disabled={isLoading || isPolling}
         />
       </div>
       <Button
         onClick={handleConnectAndFetch}
         disabled={
-          isLoading || !agencyClientId || !agencyId || !providerConfigKey
+          isLoading ||
+          isPolling ||
+          !agencyClientId ||
+          !agencyId ||
+          !providerConfigKey
         }
       >
         {isLoading
-          ? "Processing..."
-          : "Connect & Fetch Properties (Requires Webhook)"}
+          ? "Connecting..."
+          : isPolling
+            ? "Verifying..."
+            : "Connect & Verify"}
       </Button>
-      {message && (
-        <p
-          className={`mt-4 text-sm ${message.startsWith("Error:") ? "text-red-600" : "text-green-600"}`}
-        >
-          {message}
-        </p>
+      {message && !errorMessage && (
+        <p className="mt-4 text-sm text-green-600">{message}</p>
+      )}
+      {errorMessage && (
+        <p className="mt-4 text-sm text-red-600">Error: {errorMessage}</p>
       )}
     </div>
   )

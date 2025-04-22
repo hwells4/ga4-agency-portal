@@ -206,7 +206,8 @@
 | 2.20 | Write backend tests       | Test Server Actions and API logic                                               | F2.2, T2.4      | 2.18         | 🔄      |
 | 2.21 | Test Portal UI            | Manually test the complete UI flow                                              | F2.1            | 2.19.5       | 🔄      |
 | 2.22 | **Test Nango Connection**   | **Verify `fetchGa4PropertiesAction` works after manual connection/storage**     | F2.1, F2.2      | 2.16, 2.18.4 | ✅      |
-| 2.23 | **Verify Nango Webhook**  | **Confirm Nango webhook successfully triggers callback & DB update (PRIORITY)** | F2.2, T2.3      | 2.16, 2.18.4 | 🔄      |
+| 2.23 | **Verify Nango Webhook**  | **Confirm Nango webhook successfully triggers callback & DB update.**           | F2.2, T2.3      | 2.16, 2.18.4 | ✅      |
+| 2.24 | Implement Connection Polling| **Add API endpoint & frontend logic to poll for webhook completion status.**    | F2.1 (Implied)  | 2.23         | 🔄      |
 
 ### Repository 1: MCP Server Updates <a name="repo1-phase2"></a>
 
