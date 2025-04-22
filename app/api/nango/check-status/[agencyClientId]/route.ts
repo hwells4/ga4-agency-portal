@@ -8,11 +8,11 @@ import { NextResponse } from "next/server"
 
 export async function GET(
   req: Request,
-  { params }: { params: { agencyClientId: string } }
+  context: { params: { agencyClientId: string } }
 ) {
   try {
     const { userId } = await auth()
-    const { agencyClientId } = params
+    const { agencyClientId } = context.params
 
     if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
