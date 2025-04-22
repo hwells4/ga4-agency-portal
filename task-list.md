@@ -201,26 +201,28 @@
 
 #### Testing
 
-| ID | Task | Description | PRD Ref | Dependencies | Status |
-|----|------|-------------|---------|--------------|--------|
-| 2.20 | Write backend tests | Test Server Actions and API logic | F2.2, T2.4 | 2.18 | 🔄 |
-| 2.21 | Test Portal UI | Manually test the complete UI flow | F2.1 | 2.19.5 | 🔄 |
+| ID   | Task                      | Description                                                                     | PRD Ref         | Dependencies | Status |
+|------|---------------------------|---------------------------------------------------------------------------------|-----------------|--------------|--------|
+| 2.20 | Write backend tests       | Test Server Actions and API logic                                               | F2.2, T2.4      | 2.18         | 🔄      |
+| 2.21 | Test Portal UI            | Manually test the complete UI flow                                              | F2.1            | 2.19.5       | 🔄      |
+| 2.22 | **Test Nango Connection**   | **Verify `fetchGa4PropertiesAction` works after manual connection/storage**     | F2.1, F2.2      | 2.16, 2.18.4 | ✅      |
+| 2.23 | **Verify Nango Webhook**  | **Confirm Nango webhook successfully triggers callback & DB update (PRIORITY)** | F2.2, T2.3      | 2.16, 2.18.4 | 🔄      |
 
 ### Repository 1: MCP Server Updates <a name="repo1-phase2"></a>
 
-| ID | Task | Description | PRD Ref | Dependencies | Status |
-|----|------|-------------|---------|--------------|--------|
-| 1.35 | Update query_ga4_report | **(Requires Repo 1 changes - Needs to parse new API response, use Nango key)** | F2.3 | 2.18.4 | 🔄 |
-| 1.36 | Add credential error handling | Handle cases where internal API or Nango API calls fail | F2.3 | 1.35 | 🔄 |
-| 1.37 | Write credential tests | Add tests for dynamic credential handling via internal API and Nango calls | F2.3 | 1.36 | 🔄 |
+| ID   | Task                             | Description                                                                    | PRD Ref | Dependencies | Status |
+|------|----------------------------------|--------------------------------------------------------------------------------|---------|--------------|--------|
+| 1.35 | Update query_ga4_report          | **(Requires Repo 1 changes - Needs to parse new API response, use Nango key)** | F2.3    | 2.18.4       | 🔄      |
+| 1.36 | Add credential error handling    | Handle cases where internal API or Nango API calls fail                        | F2.3    | 1.35         | 🔄      |
+| 1.37 | Write credential tests           | Add tests for dynamic credential handling via internal API and Nango calls     | F2.3    | 1.36         | 🔄      |
 
 ### Integration Testing <a name="integration-phase2"></a>
 
-| ID | Task | Description | PRD Ref | Dependencies | Status |
-|----|------|-------------|---------|--------------|--------|
-| 3.7 | Perform E2E test with multiple clients | Test complete flow with real credentials | F2.3, F2.4 | 1.37, 2.21 | 🔄 |
-| 3.7.1 | Configure test clients | Add 2-3 test clients with valid properties/credentials **(requires UI/actions)** | F2.1 | 3.7 | 🔄 |
-| 3.7.2 | Test client-specific queries | Verify correct property selection based on client_identifier **(requires Repo 1)** | F2.3 | 3.7.1 | 🔄 |
+| ID     | Task                                       | Description                                                                     | PRD Ref         | Dependencies | Status |
+|--------|--------------------------------------------|---------------------------------------------------------------------------------|-----------------|--------------|--------|
+| 3.7    | Perform E2E test with multiple clients     | Test complete flow with real credentials                                        | F2.3, F2.4      | 1.37, 2.21   | 🔄      |
+| 3.7.1  | Configure test clients                     | Add 2-3 test clients with valid properties/credentials **(requires UI/actions)**  | F2.1            | 3.7          | 🔄      |
+| 3.7.2  | Test client-specific queries               | Verify correct property selection based on client_identifier **(requires Repo 1)**| F2.3            | 3.7.1        | 🔄      |
 
 ## Phase 3: Enhanced GA4 Interaction & UX <a name="phase-3-enhanced-ga4-interaction--ux"></a>
 

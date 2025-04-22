@@ -7,6 +7,9 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { ActionState } from "@/types"
 
+// DO NOT import store action here
+// import { storeNangoConnectionIdAction } from "@/actions/nango-actions"
+
 // Define the types for the server action props
 type InitiateActionType = (
   agencyClientId: string,
@@ -35,16 +38,16 @@ export default function TestNangoConnectClient({
     setIsLoading(true)
     setMessage(null)
     console.log("Attempting to connect and fetch for client:", agencyClientId)
+    const currentAgencyClientId = agencyClientId // Capture value for use in callbacks
 
     try {
-      // 1. Initiate Nango connection to get session token
+      // 1. Initiate Nango connection
       console.log("Calling initiateAction...")
       const initiateResult = await initiateAction(
-        agencyClientId,
+        currentAgencyClientId,
         agencyId,
         providerConfigKey
       )
-
       if (!initiateResult.isSuccess || !initiateResult.data?.sessionToken) {
         throw new Error(
           initiateResult.message || "Failed to get Nango session token."
@@ -53,48 +56,48 @@ export default function TestNangoConnectClient({
       const sessionToken = initiateResult.data.sessionToken
       console.log("Received session token:", sessionToken)
 
-      // 2. Use Nango Frontend SDK to open the popup
-      const nangoFrontend = new Nango() // Initialize frontend SDK
-
+      // 2. Open Nango Frontend UI
+      const nangoFrontend = new Nango()
       setMessage(
-        "Nango popup should open. Please complete Google authentication."
+        "Nango popup should open. Please complete Google authentication. Backend webhook MUST be configured to store connection."
       )
 
-      // Wrap the nango auth flow in a promise to await its completion/result
-      const nangoAuthPromise = new Promise<void>((resolve, reject) => {
-        const connectUI = nangoFrontend.openConnectUI({
+      const nangoAuthPromise = new Promise<string>((resolve, reject) => {
+        nangoFrontend.openConnectUI({
           sessionToken: sessionToken,
           onEvent: event => {
             console.log("Nango UI Event:", event)
             if (event.type === "connect") {
-              // SUCCESS!
+              const connectionId = event.payload.connectionId
               console.log(
                 "Nango connection successful via frontend SDK! Connection ID:",
-                event.payload.connectionId
+                connectionId
               )
               setMessage(
-                "Nango connection successful! Now attempting to fetch properties..."
+                "Nango connection successful via popup! Waiting for backend webhook to store ID..."
               )
-              resolve() // Resolve the promise on successful connection
+              resolve(connectionId) // Resolve the promise with connectionId
             } else if (event.type === "close") {
-              // User closed the popup or auth failed in some way
               console.error("Nango popup closed or authorization failed.")
               reject(new Error("Nango authorization cancelled or failed."))
             }
-            // Handle other event types if needed (error, etc.)
           }
         })
       })
 
-      // Wait for the Nango connection process to complete (or fail)
-      await nangoAuthPromise
+      // Wait for Nango connection popup process to finish
+      const connectionId = await nangoAuthPromise
+      console.log(`Nango connection attempt completed for ID ${connectionId}.`)
 
-      // 3. If Nango connection succeeded, fetch GA4 properties
-      // Small delay to allow backend callback to potentially process
-      await new Promise(resolve => setTimeout(resolve, 1500))
+      // 3. Fetch GA4 properties (assuming webhook worked)
+      setMessage(
+        "Connection attempt done. Now trying to fetch properties (requires webhook to have worked)..."
+      )
+      // Give webhook a bit more time
+      await new Promise(resolve => setTimeout(resolve, 3000))
 
       console.log("Calling fetchAction...")
-      const fetchResult = await fetchAction(agencyClientId)
+      const fetchResult = await fetchAction(currentAgencyClientId) // Use captured ID
 
       if (fetchResult.isSuccess) {
         console.log("---------------------------------------------------------")
@@ -105,9 +108,10 @@ export default function TestNangoConnectClient({
           `Successfully fetched ${fetchResult.data.length} properties. Check browser console.`
         )
       } else {
+        // If this fails, it's likely the webhook didn't update the DB
         throw new Error(
           fetchResult.message ||
-            "Failed to fetch GA4 properties after connection."
+            "Failed to fetch GA4 properties after connection (Likely webhook issue)."
         )
       }
     } catch (error: any) {
@@ -162,7 +166,9 @@ export default function TestNangoConnectClient({
           isLoading || !agencyClientId || !agencyId || !providerConfigKey
         }
       >
-        {isLoading ? "Processing..." : "Connect & Fetch Properties"}
+        {isLoading
+          ? "Processing..."
+          : "Connect & Fetch Properties (Requires Webhook)"}
       </Button>
       {message && (
         <p
