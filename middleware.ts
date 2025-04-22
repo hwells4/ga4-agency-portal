@@ -4,34 +4,27 @@ Contains middleware for protecting routes, checking user authentication, and red
 </ai_context>
 */
 
-import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server"
-import { NextResponse } from "next/server"
+import { clerkMiddleware } from "@clerk/nextjs/server"
 
-const isProtectedRoute = createRouteMatcher(["/todo(.*)"])
-
-export default clerkMiddleware(async (auth, req) => {
-  // Allow internal API routes to pass through without Clerk auth
-  if (req.nextUrl.pathname.startsWith('/api/internal')) {
-    return NextResponse.next();
-  }
-
-  const { userId, redirectToSignIn } = await auth()
-
-  // If the user isn't signed in and the route is private, redirect to sign-in
-  if (!userId && isProtectedRoute(req)) {
-    return redirectToSignIn({ returnBackUrl: "/login" })
-  }
-
-  // If the user is logged in and the route is protected, let them view.
-  if (userId && isProtectedRoute(req)) {
-    return NextResponse.next()
-  }
-
-  // Allow all other requests (including non-protected routes and public API routes)
-  // Note: This might need adjustment depending on default behavior desired for other API routes
-  return NextResponse.next();
-})
+// Simplest form: Protects everything matched by config.matcher except publicRoutes
+export default clerkMiddleware()
 
 export const config = {
-  matcher: ["/((?!.*\\..*|_next).*)", "/", "/(api|trpc)(.*)"]
+  matcher: [
+    // Match all routes except static files and _next internal routes
+    "/((?!.*\\..*|_next).*)", 
+    // Re-include the root route if it should be protected or handled by the middleware
+    "/", 
+    // Match all API and TRPC routes
+    "/(api|trpc)(.*)"
+  ],
+  // Define public routes directly in the config
+  publicRoutes: [
+      "/login(.*)", // Match login paths
+      "/signup(.*)", // Match signup paths
+      "/api/internal/(.*)", // Internal API is public (uses own auth)
+      "/api/nango/callback", // Nango webhook is public
+      // Add "/" if the homepage should be public
+      // Add any other public routes here
+   ]
 }

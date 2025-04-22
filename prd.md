@@ -173,8 +173,8 @@ End-user client configuration (Cursor, Claude) is done via a single command usin
 | ID | Requirement | Description |
 |----|-------------|-------------|
 | (R2) F2.1 | Agency Portal V1 | Implement core web UI based on template:<br>- Agency Login/Signup (Clerk)<br>- Dashboard to list configured Agency Clients<br>- Form to add/edit Agency Clients (Client Name, **Client Identifier**, **GA4 Property ID**)<br>- **Trigger Nango connection flow** for each client and store the resulting **Nango Connection ID** associated with the client record.<br>- Display connection status (e.g., "Connected", "Needs Authentication")<br>- **(Post-Connection): Implement a mechanism (e.g., polling a status endpoint) to reliably detect when the Nango webhook has successfully updated the backend record before triggering property fetching.**<br>- Generate the npx install-mcp ... command (points to the single SSE URL) |
-| (R2) F2.2 | Credential Backend | Implement full database schema (Agencies, AgencyClients, Credentials using Drizzle) and backend logic (Next.js Server Actions) for CRUD operations. **Database schema includes `nango_connection_id` field for each AgencyClient.** |
-| (R2) T2.4 | Secure Internal Credential API (Get Connection Details) | Enhance the internal API (e.g., `/api/internal/get-connection-details`) to:<br>- Accept `client_identifier`<br>- Perform secure lookup in the database for the correct `property_id` and `nango_connection_id`<br>- Implement robust authentication/authorization (ensure only the MCP server can call)<br>- **Return BOTH `property_id` and `nango_connection_id`.** |
+| (R2) F2.2 | Credential Backend | Implement full database schema (Agencies, AgencyClients using Drizzle) and backend logic (Next.js Server Actions) for CRUD operations. **Database schema includes `nango_connection_id`, `nango_provider_config_key` fields for each AgencyClient.** |
+| (R2) T2.4 | Secure Internal Credential API (Get Connection Details) | Enhance the internal API (e.g., `/api/internal/get-creds`) to:<br>- Accept `client_identifier` query parameter<br>- Perform secure lookup in the database for the correct `property_id`, `nango_connection_id`, and `nango_provider_config_key`<br>- Implement robust authentication/authorization (shared secret header)<br>- **Return `property_id`, `nango_connection_id`, and `nango_provider_config_key`.** |
 | (R1) F2.3 | Update MCP Query Tool | Update `query_ga4_report` to accept `client_identifier`. Call the secure internal API (T2.4) to get `property_id` and `nango_connection_id`. Use the `nango_connection_id` to **call the public Nango API** to fetch the access token. Use the token and `property_id` for the GA4 call. Implement robust error handling for credential lookup failures (internal and Nango). |
 | (R2) F2.4 | Agency Data Isolation | Ensure DB queries and API logic strictly enforce agency boundaries |
 
@@ -187,6 +187,7 @@ End-user client configuration (Cursor, Claude) is done via a single command usin
 | (R2) T2.3 | Secure credential flow | **Secure storage of Nango Connection IDs** and associated metadata in the database. |
 | (R1/R2) T4.5 | API Security | Implement proper internal API security mechanism (Shared Secret Header) |
 | **(R1) T2.5** | **Nango API Client (Repo 1)** | **Implement client in Repo 1 to call the public Nango API (`/connection/{id}`) to fetch credentials using a connection ID.** |
+| (R2) T2.6 | Dynamic Route Handler Pattern | **NOTE:** Dynamic API routes in this project (`/api/.../[param]/route.ts`) currently require the `"use server";` directive and the `(req, { params: Promise<...> })` signature pattern with `await params` internally. |
 
 #### Security Requirements
 

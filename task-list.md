@@ -177,6 +177,7 @@
 | 2.15 | Implement Server Actions | Create CRUD operations in actions/db/ | F2.2 | 2.13 | 🔄 |
 | 2.16 | Add Nango connection handling | Implement **Nango connection flow trigger** and storage of `nango_connection_id` in DB | T2.3, S2.3 | 2.15 | ✅ |
 | 2.17 | Enforce data isolation | Add agency boundary checks to all queries | F2.4, S2.2 | 2.15 | 🔄 |
+| 2.17.1 | Fix Clerk Middleware | Update `middleware.ts` to correctly protect portal API routes | S2.1 | 2.14 | ✅ |
 
 #### Internal Credential API Enhancement
 
@@ -187,6 +188,7 @@
 | 2.18.2 | Implement DB lookup | Query database for client to get **`property_id`, `nango_connection_id`, and `nango_provider_config_key`** | T2.4 | 2.18.1 | ✅ |
 | 2.18.3 | Return connection details | Format and return actual `property_id`, `nango_connection_id`, and `nango_provider_config_key` | T2.4 | 2.18.2 | ✅ |
 | 2.18.4 | Add error handling | Handle not found, unauthorized, etc. | T2.4 | 2.18.3 | ✅ |
+| 2.18.5 | Create Status Check API | Add `GET /api/nango/check-status/[agencyClientId]` route | F2.1 (Implied) | 2.13 | ✅ |
 
 #### Agency Portal UI
 
@@ -207,7 +209,9 @@
 | 2.21 | Test Portal UI            | Manually test the complete UI flow                                              | F2.1            | 2.19.5       | 🔄      |
 | 2.22 | **Test Nango Connection**   | **Verify `fetchGa4PropertiesAction` works after manual connection/storage**     | F2.1, F2.2      | 2.16, 2.18.4 | ✅      |
 | 2.23 | **Verify Nango Webhook**  | **Confirm Nango webhook successfully triggers callback & DB update.**           | F2.2, T2.3      | 2.16, 2.18.4 | ✅      |
-| 2.24 | Implement Connection Polling| **Add API endpoint & frontend logic to poll for webhook completion status.**    | F2.1 (Implied)  | 2.23         | 🔄      |
+| 2.24 | Implement Connection Polling| **Add frontend logic to poll `/api/nango/check-status` for webhook completion status.** (Implemented in test component) | F2.1 (Implied)  | 2.18.5, 2.23 | ✅      |
+| 2.24.1 | Debug Build Errors | Resolved persistent build error for dynamic route handler signature (required `"use server"` + `await params`) | N/A | 2.18.5 | ✅ |
+| 2.24.2 | Debug Runtime Errors | Resolved 401 polling errors (Middleware, fetch credentials) and Nango ID mismatch | N/A | 2.24, 2.17.1 | ✅ |
 
 ### Repository 1: MCP Server Updates <a name="repo1-phase2"></a>
 
