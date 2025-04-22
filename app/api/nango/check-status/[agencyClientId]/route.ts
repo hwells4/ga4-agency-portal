@@ -52,11 +52,26 @@ export async function GET(
       )
       .limit(1)
 
+    // --- Add Detailed Logging ---
+    console.log(
+      `[API Check Status] Query Result for ${agencyClientId}:`,
+      JSON.stringify(client, null, 2)
+    )
+    // --- End Logging ---
+
     if (!client) {
+      // Add logging here too for clarity if client not found
+      console.log(
+        `[API Check Status] Client record not found for ID: ${agencyClientId}`
+      )
       return NextResponse.json({ error: "Client not found" }, { status: 404 })
     }
 
     const isConnected = !!client.nangoConnectionId
+    // Log the derived status as well
+    console.log(
+      `[API Check Status] Derived isConnected status for ${agencyClientId}: ${isConnected}`
+    )
 
     return NextResponse.json({ isConnected }, { status: 200 })
   } catch (error) {
