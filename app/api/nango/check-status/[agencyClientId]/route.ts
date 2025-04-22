@@ -4,15 +4,22 @@ import { db } from "@/db/db"
 import { agencyClientsTable } from "@/db/schema"
 import { auth } from "@clerk/nextjs/server"
 import { and, eq, isNotNull } from "drizzle-orm"
-import { NextResponse } from "next/server"
+import { NextRequest, NextResponse } from "next/server"
+
+// Correct signature based on project examples:
+// - ADD "use server"
+// - Second arg destructures { params }
+// - Type for params is Promise<{...}>
+// - await params inside the function
 
 export async function GET(
-  req: Request,
-  context: { params: { agencyClientId: string } }
+  request: NextRequest,
+  { params }: { params: Promise<{ agencyClientId: string }> } // params is a Promise
 ) {
   try {
     const { userId } = await auth()
-    const { agencyClientId } = context.params
+    // Await params before accessing the specific parameter
+    const { agencyClientId } = await params
 
     if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
