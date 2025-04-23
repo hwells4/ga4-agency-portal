@@ -8,6 +8,7 @@ import {
 } from "drizzle-orm/pg-core"
 import { agenciesTable } from "./agencies-schema"
 import { sql } from "drizzle-orm"
+import { nangoConnectionsTable } from "./nango-connections-schema"
 
 // Define the enum for credential status
 export const credentialStatusEnum = pgEnum("credential_status", [
@@ -28,18 +29,19 @@ export const agencyClientsTable = pgTable(
     clientIdentifier: text("client_identifier").notNull().unique(),
     // User-friendly name for the portal UI
     clientName: text("client_name").notNull(),
-    ga4PropertyId: text("ga4_property_id").notNull(),
-    // Add Nango connection ID field
-    nangoConnectionId: text("nango_connection_id"), // Task 2.12 & 2.16
-    // Add Nango Provider Config Key field (e.g., 'google-analytics')
-    nangoProviderConfigKey: text("nango_provider_config_key"),
-    // Reference to the stored credential (e.g., secret manager ARN, DB encrypted record ID)
-    // For now, we'll use a text field. Task 2.16 will refine this.
-    credentialReference: text("credential_reference"),
-    // Use the enum for credential status
+    // Specific GA4 Property ID (e.g., properties/12345)
+    propertyId: text("property_id").notNull(),
+
+    // Link to the specific Nango connection that provides access to this property
+    nangoConnectionTableId: uuid("nango_connection_table_id")
+      .references(() => nangoConnectionsTable.id, { onDelete: "cascade" })
+      .notNull(),
+
+    // Use the enum for credential status (might be redundant if status is on nangoConnection)
     credentialStatus: credentialStatusEnum("credential_status")
       .default("pending")
       .notNull(),
+
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at")
       .defaultNow()
@@ -52,6 +54,7 @@ export const agencyClientsTable = pgTable(
       for: "all",
       using: sql`${table.agencyId} = current_setting('app.current_agency_id', true)::text`
     })
+    // Consider adding a unique constraint on (agencyId, propertyId) or (agencyId, clientIdentifier)
   })
 )
 

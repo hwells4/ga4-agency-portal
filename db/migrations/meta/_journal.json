@@ -43,6 +43,13 @@
       "when": 1745370491722,
       "tag": "0005_add_agencyid_to_profiles",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1745373294694,
+      "tag": "0006_bent_silhouette",
+      "breakpoints": true
     }
   ]
 }

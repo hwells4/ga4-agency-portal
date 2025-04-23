@@ -167,14 +167,14 @@
 |----|------|-------------|---------|--------------|--------|
 | 2.11 | Configure Drizzle ORM | Set up connection to PostgreSQL/Supabase | T2.2 | 2.10 | ✅ |
 | 2.12 | Define database schemas | Create schemas for Agencies, AgencyClients, Credentials. **Ensure AgencyClients schema includes `property_id` and `nango_connection_id`, `nango_provider_config_key`** | T2.2 | 2.11 | ✅ |
-| 2.13 | Run migrations | Execute npx drizzle-kit generate/migrate | T2.2 | 2.12 | 🔄 |
+| 2.13 | Run migrations | Execute npx drizzle-kit generate/migrate | T2.2 | 2.12 | ✅ |
 
 #### Authentication & Backend Logic
 
 | ID | Task | Description | PRD Ref | Dependencies | Status |
 |----|------|-------------|---------|--------------|--------|
 | 2.14 | Configure Clerk auth | Set up authentication with Clerk | F2.1, S2.1 | 2.10 | ✅ |
-| 2.15 | Implement Server Actions | Create CRUD operations in actions/db/ | F2.2 | 2.13 | 🔄 |
+| 2.15 | Implement Server Actions | Create CRUD operations in actions/db/ | F2.2 | 2.13 | ✅ |
 | 2.16 | Add Nango connection handling | Implement **Nango connection flow trigger** and storage of `nango_connection_id` in DB | T2.3, S2.3 | 2.15 | ✅ |
 | 2.17 | Enforce data isolation | Add agency boundary checks to all queries | F2.4, S2.2 | 2.15 | 🔄 |
 | 2.17.1 | Fix Clerk Middleware | Update `middleware.ts` to correctly protect portal API routes | S2.1 | 2.14 | ✅ |
@@ -325,9 +325,10 @@
 
 | ID   | Task                                  | Description                                                                                 | Repo | Dependencies      | Status |
 |------|---------------------------------------|---------------------------------------------------------------------------------------------|------|-------------------|--------|
-| Y.1  | Backend: Auto-create Profile/Agency   | Implement Clerk webhook (`organization.created`) handler to create `Agency` record.       | R2   | 2.12 (Confirmed)  | ✅      |
-| Y.2  | Backend: GA4 Property Discovery Action| Create `discoverGa4PropertiesAction` using Nango token & GA4 Admin API.                     | R2   | 2.16,googleapis   | 🔄      |
-| Y.3  | Frontend/Backend: Trigger Discovery   | Call `discoverGa4PropertiesAction` after successful Nango connection confirmation.            | R2   | 2.24.2, Y.2       | 🔄      |
+| Y.1  | Backend: Auto-create Agency         | Implement Clerk webhook (`organization.created`) handler to create `Agency` record.       | R2   | 2.12 (Confirmed)  | ✅      |
+| Y.1.1| Backend: Link Profile to Agency     | Implement Clerk webhook (`organizationMembership.created`) handler to update `Profile.agencyId`. | R2 | Y.1, Profile Schema | ✅      |
+| Y.2  | Backend: GA4 Property Discovery Action| Use existing `fetchGa4PropertiesAction` using Nango token & GA4 Admin API.          | R2   | 2.16,googleapis   | ✅      |
+| Y.3  | Frontend/Backend: Trigger Discovery   | Call `fetchGa4PropertiesAction` after successful Nango connection confirmation. (Logic exists in test component) | R2   | 2.24.2, Y.2       | ✅      |
 | Y.4  | Frontend: Property Selection UI       | Create modal/form (`PropertySelectionForm`) to display properties, allow selection & naming.| R2   | Y.3               | 🔄      |
 | Y.5  | Backend: Bulk Client Creation Action  | Create `bulkCreateAgencyClientsAction` to save selected properties to `agencyClientsTable`. | R2   | X.1 (Modify Schema), Y.4 | 🔄      |
 | Y.6  | Frontend: Connect UI to Bulk Action   | Wire up `PropertySelectionForm` submission to call `bulkCreateAgencyClientsAction`.           | R2   | Y.4, Y.5          | 🔄      |

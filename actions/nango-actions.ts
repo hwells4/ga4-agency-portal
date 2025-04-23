@@ -1,7 +1,7 @@
 "use server"
 
 import { db } from "@/db/db"
-import { agencyClientsTable } from "@/db/schema"
+import { agencyClientsTable, nangoConnectionsTable } from "@/db/schema"
 import { ActionState } from "@/types"
 import { eq } from "drizzle-orm"
 import { Nango } from "@nangohq/node"
@@ -24,20 +24,26 @@ interface Ga4PropertySummary {
 }
 
 /**
- * Initiates the Nango connection session.
+ * Initiates the Nango connection session for an agency.
  * Returns a session token that the frontend can use to open the Nango Connect UI.
- * @param agencyClientId - The ID of the agency client record in our DB (used as Nango's end user ID).
+ * Uses userId as Nango's end user ID for this specific connection instance.
+ * Uses agencyId as Nango's organization ID.
  * @param agencyId - The ID of the agency (used as Nango's organization ID).
+ * @param userId - The ID of the user initiating the connection (used as Nango's end user ID).
  * @param providerConfigKey - The Nango provider config key (e.g., 'google-analytics').
  */
 export async function initiateNangoConnectionAction(
-  agencyClientId: string,
   agencyId: string,
+  userId: string,
   providerConfigKey: string
 ): Promise<ActionState<{ sessionToken: string }>> {
   try {
     if (!providerConfigKey) {
       throw new Error("Missing providerConfigKey.")
+    }
+    if (!agencyId || !userId) {
+      // Ensure agencyId and userId are provided
+      throw new Error("Missing agencyId or userId.")
     }
     if (!process.env.NANGO_SECRET_KEY) {
       // Ensure secret key is loaded (Nango client init might not throw immediately)
@@ -45,24 +51,27 @@ export async function initiateNangoConnectionAction(
     }
 
     console.log(
-      `Creating Nango connect session for client: ${agencyClientId}, agency: ${agencyId}, provider: ${providerConfigKey}`
+      `Creating Nango connect session for user: ${userId}, agency: ${agencyId}, provider: ${providerConfigKey}`
     )
+
+    // Define the state to pass to Nango and receive back in the callback
+    // Useful for context in the callback handler
+    const statePayload = JSON.stringify({ agencyId: agencyId, userId: userId });
 
     // Ask Nango for a secure session token
     const result = await nango.createConnectSession({
       end_user: {
-        // Using agencyClientId as the unique identifier for the end user connection in Nango
-        id: agencyClientId
-        // email and display_name are optional
+        // Use userId as the unique identifier for this specific connection instance
+        id: userId
       },
       organization: {
-        // Using agencyId as the organization identifier in Nango
+        // Use agencyId as the organization identifier in Nango
         id: agencyId
-        // display_name is optional
       },
       // Only allow connecting the specific integration requested
-      allowed_integrations: [providerConfigKey]
-      // integrations_config_defaults could be used later if needed
+      allowed_integrations: [providerConfigKey],
+      // Pass the state
+      state: statePayload
     })
 
     if (!result?.data?.token) {
@@ -70,7 +79,7 @@ export async function initiateNangoConnectionAction(
     }
 
     const sessionToken = result.data.token;
-    console.log(`Nango session token generated successfully for client: ${agencyClientId}`)
+    console.log(`Nango session token generated successfully for user: ${userId}, agency: ${agencyId}`)
 
     // Return the session token to the frontend
     return {
@@ -89,26 +98,63 @@ export async function initiateNangoConnectionAction(
 
 /**
  * Stores the Nango connection ID received from the callback into the database.
+ * Creates a new record in nangoConnectionsTable and links it to the agency client.
  * Called by the /api/nango/callback route.
  * @param agencyClientId - The ID of the agency client (passed via state).
  * @param nangoConnectionId - The connection ID received from Nango.
+ * @param nangoProviderConfigKey - The provider config key received from Nango.
+ * @param agencyId - The ID of the agency.
+ * @param userId - The ID of the user.
  */
 export async function storeNangoConnectionIdAction(
   agencyClientId: string,
-  nangoConnectionId: string
+  nangoConnectionId: string,
+  nangoProviderConfigKey: string,
+  agencyId: string,
+  userId: string
 ): Promise<ActionState<void>> {
   try {
     console.log(
-      `Storing Nango connection ID ${nangoConnectionId} for agency client ${agencyClientId}`
+      `Storing Nango connection ID ${nangoConnectionId} (provider: ${nangoProviderConfigKey}) for agency client ${agencyClientId}`
     )
 
-    // Find the client and update it
-    // Note: We might need agencyId here if RLS is strictly enforced on updates.
-    // For simplicity now, we assume the agencyClientId is globally unique enough or RLS is handled via session.
+    // 1. Find or Create the Nango Connection record
+    const [nangoConnectionRecord] = await db
+      .insert(nangoConnectionsTable)
+      .values({
+        nangoConnectionId: nangoConnectionId,
+        providerConfigKey: nangoProviderConfigKey,
+        agencyId: agencyId,
+        userId: userId,
+        // createdAt/updatedAt are handled by default, status defaults to 'pending'
+      })
+      .onConflictDoUpdate({
+        target: nangoConnectionsTable.nangoConnectionId, // Unique constraint on nangoConnectionId
+        set: {
+          providerConfigKey: nangoProviderConfigKey,
+          agencyId: agencyId, // Update agencyId on conflict
+          userId: userId, // Update userId on conflict
+          status: "pending", // Reset status on conflict? Or maybe 'active'? Let's stick with pending for now.
+          updatedAt: new Date(),
+        },
+      })
+      .returning({ id: nangoConnectionsTable.id });
+
+    if (!nangoConnectionRecord?.id) {
+      throw new Error(
+        `Failed to create or find Nango connection record for ID: ${nangoConnectionId}`
+      )
+    }
+
+    console.log(
+      `Nango connection record ID: ${nangoConnectionRecord.id} associated with Nango ID: ${nangoConnectionId}`
+    )
+
+    // 2. Update the Agency Client record to link to the Nango Connection record
     const [updatedClient] = await db
       .update(agencyClientsTable)
       .set({
-        nangoConnectionId: nangoConnectionId,
+        nangoConnectionTableId: nangoConnectionRecord.id, // Link to the nango_connections table record
         credentialStatus: "validated", // Update status as connection is made
         updatedAt: new Date()
       })
@@ -117,7 +163,7 @@ export async function storeNangoConnectionIdAction(
 
     if (!updatedClient) {
       throw new Error(
-        `Agency client with ID ${agencyClientId} not found during Nango callback.`
+        `Agency client with ID ${agencyClientId} not found during Nango callback linkage.`
       )
     }
 
@@ -150,25 +196,39 @@ export async function fetchGa4PropertiesAction(
   try {
     console.log(`Fetching GA4 properties for agency client: ${agencyClientId}`)
 
-    // 1. Get Nango connection details from DB
+    // 1. Get Nango connection details by joining AgencyClient and NangoConnection
     // TODO: Add agencyId check here if RLS is implemented via helpers
-    const clientRecord = await db.query.agencyClients.findFirst({
-      where: eq(agencyClientsTable.id, agencyClientId),
-      columns: {
-        nangoConnectionId: true,
-        nangoProviderConfigKey: true
-      }
-    })
+    const clientWithConnection = await db
+      .select({
+        nangoConnectionId: nangoConnectionsTable.nangoConnectionId,
+        nangoProviderConfigKey: nangoConnectionsTable.providerConfigKey
+      })
+      .from(agencyClientsTable)
+      .innerJoin(
+        nangoConnectionsTable,
+        eq(agencyClientsTable.nangoConnectionTableId, nangoConnectionsTable.id)
+      )
+      .where(eq(agencyClientsTable.id, agencyClientId))
+      .limit(1) // Expecting only one result
+      .then((results) => results[0]) // Get the first result or undefined
 
-    if (!clientRecord?.nangoConnectionId || !clientRecord?.nangoProviderConfigKey) {
+    if (
+      !clientWithConnection?.nangoConnectionId ||
+      !clientWithConnection?.nangoProviderConfigKey
+    ) {
       throw new Error(
         "Nango connection details not found or incomplete for this client."
       )
     }
 
+    const { nangoConnectionId, nangoProviderConfigKey } = clientWithConnection
+
     // 2. Fetch fresh access token from Nango
-    console.log(`Fetching Nango token for connection: ${clientRecord.nangoConnectionId}`)
-    const connection = await nango.getConnection(clientRecord.nangoProviderConfigKey, clientRecord.nangoConnectionId);
+    console.log(`Fetching Nango token for connection: ${nangoConnectionId}`)
+    const connection = await nango.getConnection(
+      nangoProviderConfigKey,
+      nangoConnectionId
+    )
 
     // Type guard to ensure we have OAuth2 credentials
     if (connection.credentials.type !== 'OAUTH2') {

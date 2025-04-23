@@ -40,7 +40,7 @@ export async function GET(
     const [client] = await db
       .select({
         id: agencyClientsTable.id,
-        nangoConnectionId: agencyClientsTable.nangoConnectionId
+        nangoConnectionTableId: agencyClientsTable.nangoConnectionTableId
       })
       .from(agencyClientsTable)
       .where(
@@ -67,7 +67,7 @@ export async function GET(
       return NextResponse.json({ error: "Client not found" }, { status: 404 })
     }
 
-    const isConnected = !!client.nangoConnectionId
+    const isConnected = !!client.nangoConnectionTableId
     // Log the derived status as well
     console.log(
       `[API Check Status] Derived isConnected status for ${agencyClientId}: ${isConnected}`
