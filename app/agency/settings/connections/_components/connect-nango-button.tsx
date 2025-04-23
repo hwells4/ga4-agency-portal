@@ -4,6 +4,7 @@ import { useState } from "react"
 import { initiateNangoConnectionAction } from "@/actions/nango-actions"
 import { Button } from "@/components/ui/button"
 import { Loader2 } from "lucide-react"
+import Nango from "@nangohq/frontend"
 // Optional: For showing toast notifications on error
 // import { toast } from "sonner";
 
@@ -33,11 +34,41 @@ export default function ConnectNangoButton({
       )
 
       if (result.isSuccess && result.data?.sessionToken) {
-        // Redirect user to Nango Connect UI
-        // Nango Connect handles the OAuth flow and redirects back to /api/nango/callback
-        console.log("Redirecting to Nango Connect...")
-        window.location.href = `https://connect.nango.dev/sessions/${result.data.sessionToken}`
-        // No need to setIsLoading(false) here as the page will navigate away
+        const sessionToken = result.data.sessionToken
+        console.log("Received session token, opening Nango Connect UI...")
+
+        // Instantiate Nango frontend SDK
+        const nango = new Nango()
+
+        // Open the Nango Connect UI using the token
+        nango.openConnectUI({
+          sessionToken: sessionToken,
+          onEvent: (event: any) => {
+            console.log("Nango UI Event:", event)
+            // Handle events if needed (e.g., detect closing, errors)
+            if (event.type === "close") {
+              // Optionally handle the case where the user closes the popup
+              console.log("Nango popup closed by user.")
+              setIsLoading(false) // Re-enable button if closed without connecting
+            } else if (event.type === "error") {
+              console.error("Nango UI Error Event:", event.payload)
+              setError(
+                event.payload?.message || "Error during Nango connection."
+              )
+              setIsLoading(false)
+            }
+            // Note: The actual connection success/storage is handled by the
+            // backend callback route (/api/nango/callback) after Nango redirects.
+            // We don't need to explicitly handle the 'connect' event here unless
+            // we want immediate UI feedback before the backend callback finishes.
+          }
+        })
+
+        // Don't change window.location.href here
+        // window.location.href = `https://connect.nango.dev/sessions/${result.data.sessionToken}`;
+
+        // Keep loading true while the popup is potentially open
+        // It will be reset on close/error events above, or the page navigates on success
       } else {
         throw new Error(
           result.message || "Failed to initiate Nango connection."
