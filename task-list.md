@@ -209,9 +209,9 @@
 | 2.21 | Test Portal UI            | Manually test the complete UI flow                                              | F2.1            | 2.19.5       | 🔄      |
 | 2.22 | **Test Nango Connection**   | **Verify `fetchGa4PropertiesAction` works after Nango connection/webhook/polling** | F2.1, F2.2      | 2.16, 2.24.2 | ✅      |
 | 2.23 | **Verify Nango Webhook**  | **Confirm Nango webhook successfully triggers callback & DB update.**           | F2.2, T2.3      | 2.16, 2.18.4 | ✅      |
-| 2.24 | Implement Connection Polling| **Add frontend logic to poll `/api/nango/check-status` for webhook completion status.** (Implemented in test component) | F2.1 (Implied)  | 2.18.5, 2.23 | ✅      |
+| 2.24 | Implement Connection Polling| **Add frontend logic to poll `/api/nango/check-status` for webhook completion status.** (Polling removed in favor of fixed delay + direct fetch) | F2.1 (Implied)  | 2.18.5, 2.23 | ✅      |
 | 2.24.1 | Debug Build Errors | Resolved persistent build error for dynamic route handler signature (required `"use server"` + `await params`) | N/A | 2.18.5 | ✅ |
-| 2.24.2 | Debug Runtime Errors | Resolved 401 polling errors (Middleware, fetch credentials) and Nango ID mismatch | N/A | 2.24, 2.17.1 | ✅ |
+| 2.24.2 | Debug Runtime Errors | Resolved 401 polling errors & Nango ID mismatch (Polling removed. Final fix involved adjusting auth() check in fetch action) | N/A | 2.24, 2.17.1 | ✅ |
 
 ### Repository 1: MCP Server Updates <a name="repo1-phase2"></a>
 
@@ -328,7 +328,7 @@
 | Y.1  | Backend: Auto-create Agency         | Implement Clerk webhook (`organization.created`) handler to create `Agency` record.       | R2   | 2.12 (Confirmed)  | ✅      |
 | Y.1.1| Backend: Link Profile to Agency     | Implement Clerk webhook (`organizationMembership.created`) handler to update `Profile.agencyId`. | R2 | Y.1, Profile Schema | ✅      |
 | Y.2  | Backend: GA4 Property Discovery Action| Use existing `fetchGa4PropertiesAction` using Nango token & GA4 Admin API.          | R2   | 2.16,googleapis   | ✅      |
-| Y.3  | Frontend/Backend: Trigger Discovery   | Call `fetchGa4PropertiesAction` after successful Nango connection confirmation. (Logic exists in test component) | R2   | 2.24.2, Y.2       | ✅      |
+| Y.3  | Frontend/Backend: Trigger Discovery   | Call `fetchGa4PropertiesAction` after successful Nango connection confirmation. (Connection->Delay->Fetch action now working) | R2   | 2.24.2, Y.2       | ✅      |
 | Y.4  | Frontend: Property Selection UI       | Create modal/form (`PropertySelectionForm`) to display properties, allow selection & naming.| R2   | Y.3               | 🔄      |
 | Y.5  | Backend: Bulk Client Creation Action  | Create `bulkCreateAgencyClientsAction` to save selected properties to `agencyClientsTable`. | R2   | X.1 (Modify Schema), Y.4 | 🔄      |
 | Y.6  | Frontend: Connect UI to Bulk Action   | Wire up `PropertySelectionForm` submission to call `bulkCreateAgencyClientsAction`.           | R2   | Y.4, Y.5          | 🔄      |

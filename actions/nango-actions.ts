@@ -9,6 +9,7 @@ import { revalidatePath } from "next/cache"
 import { google } from "googleapis"
 import { BetaAnalyticsDataClient } from "@google-analytics/data"
 import { auth } from "@clerk/nextjs/server"
+import { withRLSRead } from "@/actions/db/rls-helpers"
 
 // Initialize Nango client - ensure env vars are set
 const nango = new Nango({
@@ -23,6 +24,58 @@ interface Ga4PropertySummary {
   name: string // e.g., "properties/12345"
   displayName: string
 }
+
+/**
+ * Retrieves the internal database record for a Nango connection using Nango's public connection ID.
+ * Applies RLS to ensure the user has access to this connection record.
+ * @param publicConnectionId - The connection ID provided by Nango.
+ * @returns ActionState containing the internal Nango connection record ID and status on success.
+ */
+export const getNangoConnectionByPublicIdAction = async (
+    publicConnectionId: string
+  ): Promise<ActionState<{ nangoConnectionTableId: string; status: string }>> =>
+    withRLSRead(async (tx: any) => {
+      // RLS policy automatically filters by agencyId/userId set in context
+      try {
+        if (!publicConnectionId) {
+            return { isSuccess: false, message: "Nango Public Connection ID is required." };
+        }
+
+        console.log(`Querying internal DB for Nango public connection ID: ${publicConnectionId} within RLS context.`);
+
+        // Query using the public ID, RLS provides the necessary ownership check
+        const connectionRecord = await tx.query.nangoConnections.findFirst({
+          where: eq(nangoConnectionsTable.nangoConnectionId, publicConnectionId),
+          columns: {
+            id: true, // This is our internal nangoConnectionTableId
+            status: true
+          }
+        });
+  
+        if (!connectionRecord) {
+          // Record might not exist yet if callback is slow, or RLS prevented access
+          console.warn(`Internal record for Nango public ID ${publicConnectionId} not found within RLS context.`);
+          return {
+            isSuccess: false,
+            message: `Connection record not found. It might still be processing, or access is denied. Please wait a moment and try again if the connection was successful.`, // User-friendly message
+          };
+        }
+
+        console.log(`Found internal record ID: ${connectionRecord.id} with status: ${connectionRecord.status} for public ID: ${publicConnectionId}`);
+  
+        return {
+          isSuccess: true,
+          message: "Connection record retrieved successfully.",
+          data: { 
+              nangoConnectionTableId: connectionRecord.id, 
+              status: connectionRecord.status 
+            },
+        };
+      } catch (error: any) {
+        console.error(`Error retrieving internal Nango connection record for public ID ${publicConnectionId}:`, error);
+        return { isSuccess: false, message: `Failed to retrieve connection record: ${error.message || 'Unknown error'}` };
+      }
+    });
 
 /**
  * Initiates the Nango connection session for an agency.
@@ -345,4 +398,6 @@ export async function fetchGa4PropertiesAction(
       message: message,
     };
   }
-} 
+}
+
+// Ensure file ends cleanly here, no extra braces 
