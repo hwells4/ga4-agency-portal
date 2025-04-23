@@ -8,7 +8,6 @@ import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server"
 
 const isProtectedRoute = createRouteMatcher([
   '/agency(.*)', // Protect all agency routes
-  '/api/nango/connection-status(.*)', // Specifically protect the status API route
   // Add other protected routes here, excluding those in publicRoutes
 ]);
 
