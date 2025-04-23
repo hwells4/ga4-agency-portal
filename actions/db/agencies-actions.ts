@@ -9,20 +9,20 @@ import { ActionState } from '@/types'
  * Intended to be called from the Clerk `organization.created` webhook.
  * @param orgId - The Clerk Organization ID (used as primary key).
  * @param orgName - The name of the organization.
- * @param createdByUserId - The Clerk User ID of the creator.
+ * @param createdByUserId - The Clerk User ID of the creator (optional).
  * @returns ActionState indicating success or failure.
  */
 export async function createAgencyAction(
   orgId: string,
   orgName: string,
-  createdByUserId: string
-): Promise<ActionState<void>> { // Returns void on success
+  createdByUserId: string | null | undefined // Accept null/undefined
+): Promise<ActionState<void>> {
   try {
     const newAgency: InsertAgency = {
       id: orgId,
       name: orgName,
-      userId: createdByUserId
-      // createdAt and updatedAt will use default values
+      // Handle null/undefined case for userId
+      userId: createdByUserId ? createdByUserId : null 
     }
 
     await db.insert(agenciesTable).values(newAgency)

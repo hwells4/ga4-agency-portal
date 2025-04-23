@@ -63,33 +63,32 @@ export async function POST(req: NextRequest) {
 
   // --- Handle organization.created event ---
   if (eventType === "organization.created") {
+    // Destructure payload, createdByUserId might be undefined
     const { id: orgId, name: orgName, created_by: createdByUserId } = evt.data
 
-    // Validate required data
-    if (!orgId || !orgName || !createdByUserId) {
+    // Minimal validation: Ensure orgId and orgName exist, as they are crucial.
+    if (!orgId || !orgName) {
       console.error(
-        `Webhook Error (organization.created): Missing required data. OrgID=${orgId}, Name=${orgName}, Creator=${createdByUserId}`
+        `Webhook Error (organization.created): Missing OrgID or Name. OrgID=${orgId}, Name=${orgName}`
       )
       return NextResponse.json(
-        { error: "Missing required organization data in webhook payload" },
+        { error: "Missing organization ID or Name in webhook payload" },
         { status: 400 }
       )
     }
 
     console.log(
-      `Processing organization.created: OrgID=${orgId}, Name=${orgName}, Creator=${createdByUserId}`
+      `Processing organization.created: OrgID=${orgId}, Name=${orgName}, Creator=${createdByUserId || "N/A (Admin?)"}`
     )
 
-    // Call the action to create Agency
+    // Call the action to create Agency, passing potentially undefined creator ID
     try {
-      // Now createdByUserId is guaranteed to be a string here
       const result = await createAgencyAction(orgId, orgName, createdByUserId)
 
       if (!result.isSuccess) {
         console.error(
           `Webhook Error (organization.created): Failed to create agency for ${orgId}: ${result.message}`
         )
-        // Return 500 as it's an internal processing error
         return NextResponse.json(
           { error: "Failed to create agency record" },
           { status: 500 }
