@@ -6,8 +6,13 @@ import { auth } from "@clerk/nextjs/server"
 import { and, eq } from "drizzle-orm"
 import { NextRequest, NextResponse } from "next/server"
 
-export async function GET(request: NextRequest) {
+export async function GET(
+  request: NextRequest,
+  { params }: { params: Promise<any> }
+) {
   try {
+    await params
+
     const { userId, orgId: agencyId } = await auth() // Get current user/org
 
     if (!userId || !agencyId) {

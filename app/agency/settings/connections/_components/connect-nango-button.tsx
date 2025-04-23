@@ -86,7 +86,12 @@ export default function ConnectNangoButton({
           const response = await fetch(
             `/api/nango/connection-status?nangoConnectionId=${nangoConnectionId}`,
             {
-              credentials: "include"
+              method: "GET",
+              headers: {
+                "Content-Type": "application/json"
+              },
+              credentials: "include",
+              cache: "no-store"
             }
           )
 
