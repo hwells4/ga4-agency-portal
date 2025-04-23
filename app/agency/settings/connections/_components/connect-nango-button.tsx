@@ -208,14 +208,17 @@ export default function ConnectNangoButton({
                   }
                 } // End retry loop
 
-                if (success && nangoConnectionTableId) {
-                  // Proceed to fetch properties only if internal ID was retrieved
+                if (success) {
+                  // The loop successfully found the ID and triggered setNangoConnectionTableId
+                  // Proceed to fetch properties
                   setStatusMessage(
                     "Details verified. Preparing to fetch properties..."
                   )
+                  // We pass the public ID, handleFetchProperties doesn't need the internal one
                   handleFetchProperties(nangoPublicConnectionId)
+                  // Do not stop loading here; handleFetchProperties continues the process
                 } else {
-                  // Handle final failure after retries
+                  // Handle final failure after retries (loop finished without success)
                   const finalErrorMessage =
                     internalIdResult?.message ||
                     "Failed to verify connection details after multiple attempts."
@@ -225,7 +228,7 @@ export default function ConnectNangoButton({
                   )
                   setError(finalErrorMessage)
                   setStatusMessage(null)
-                  setIsLoading(false)
+                  setIsLoading(false) // Stop loading indicator only on final failure
                 }
               } else {
                 console.error(
