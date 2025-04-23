@@ -325,7 +325,7 @@
 
 | ID   | Task                                  | Description                                                                                 | Repo | Dependencies      | Status |
 |------|---------------------------------------|---------------------------------------------------------------------------------------------|------|-------------------|--------|
-| Y.1  | Backend: Auto-create Profile/Agency   | Implement Clerk webhook (`user.created`) handler to create `Agency` & `Profile` records.      | R2   | 2.12 (Confirmed)  | 🔄      |
+| Y.1  | Backend: Auto-create Profile/Agency   | Implement Clerk webhook (`organization.created`) handler to create `Agency` record.       | R2   | 2.12 (Confirmed)  | ✅      |
 | Y.2  | Backend: GA4 Property Discovery Action| Create `discoverGa4PropertiesAction` using Nango token & GA4 Admin API.                     | R2   | 2.16,googleapis   | 🔄      |
 | Y.3  | Frontend/Backend: Trigger Discovery   | Call `discoverGa4PropertiesAction` after successful Nango connection confirmation.            | R2   | 2.24.2, Y.2       | 🔄      |
 | Y.4  | Frontend: Property Selection UI       | Create modal/form (`PropertySelectionForm`) to display properties, allow selection & naming.| R2   | Y.3               | 🔄      |

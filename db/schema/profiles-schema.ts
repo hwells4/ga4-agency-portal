@@ -5,11 +5,15 @@ Defines the database schema for profiles.
 */
 
 import { pgEnum, pgTable, text, timestamp } from "drizzle-orm/pg-core"
+import { agenciesTable } from "./agencies-schema"
 
 export const membershipEnum = pgEnum("membership", ["free", "pro"])
 
 export const profilesTable = pgTable("profiles", {
   userId: text("user_id").primaryKey().notNull(),
+  agencyId: text("agency_id").references(() => agenciesTable.id, {
+    onDelete: "set null"
+  }),
   membership: membershipEnum("membership").notNull().default("free"),
   stripeCustomerId: text("stripe_customer_id"),
   stripeSubscriptionId: text("stripe_subscription_id"),

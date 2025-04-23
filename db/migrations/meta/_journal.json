@@ -36,6 +36,13 @@
       "when": 1745369367586,
       "tag": "0004_make_agency_userid_nullable",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1745370491722,
+      "tag": "0005_add_agencyid_to_profiles",
+      "breakpoints": true
     }
   ]
 }

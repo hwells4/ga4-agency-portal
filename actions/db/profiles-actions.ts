@@ -126,3 +126,43 @@ export async function deleteProfileAction(
     return { isSuccess: false, message: "Failed to delete profile" }
   }
 }
+
+/**
+ * Updates the agencyId for a given profile.
+ * Intended to be called from the Clerk `organizationMembership.created` webhook.
+ * @param userId - The Clerk User ID of the profile to update.
+ * @param agencyId - The Clerk Organization ID (agency ID) to associate.
+ * @returns ActionState indicating success or failure.
+ */
+export async function updateProfileAgencyIdAction(
+  userId: string,
+  agencyId: string
+): Promise<ActionState<void>> {
+  try {
+    const [updatedProfile] = await db
+      .update(profilesTable)
+      .set({ agencyId: agencyId }) // Set the agencyId field
+      .where(eq(profilesTable.userId, userId))
+      .returning({ updatedId: profilesTable.userId })
+
+    if (!updatedProfile) {
+      // This case might happen if the profile wasn't created yet when the membership event fires.
+      // We might need more robust handling later (e.g., retry, or ensure profile exists first).
+      console.warn(`Profile not found for userId ${userId} when trying to update agencyId.`);
+      return { isSuccess: false, message: "Profile not found to update agency link." }
+    }
+
+    console.log(`Successfully linked profile ${userId} to agency ${agencyId}`)
+    return {
+      isSuccess: true,
+      message: "Profile successfully linked to agency",
+      data: undefined
+    }
+  } catch (error: any) {
+    console.error(`Error updating profile agencyId for userId ${userId}:`, error)
+    return {
+      isSuccess: false,
+      message: `Failed to link profile to agency: ${error.message || 'Unknown error'}`
+    }
+  }
+}

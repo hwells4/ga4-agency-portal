@@ -10,6 +10,8 @@ import type { NextRequest } from "next/server"
 
 // Import the new action
 import { createAgencyAction } from "@/actions/db/agencies-actions"
+// Import the new profile update action
+import { updateProfileAgencyIdAction } from "@/actions/db/profiles-actions"
 
 export async function POST(req: NextRequest) {
   // You can find this in the Clerk Dashboard -> Webhooks -> choose the webhook
@@ -106,6 +108,38 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(
         { error: "Internal server error during agency creation" },
         { status: 500 }
+      )
+    }
+  }
+
+  // --- Handle organizationMembership.created event ---
+  else if (eventType === "organizationMembership.created") {
+    // Extract relevant IDs from the payload
+    const { organization, public_user_data } = evt.data
+    const agencyId = organization?.id
+    const userId = public_user_data?.user_id
+
+    if (!agencyId || !userId) {
+      console.error(
+        `Webhook Error (organizationMembership.created): Missing agencyId or userId. AgencyID=${agencyId}, UserID=${userId}`
+      )
+      return NextResponse.json(
+        { error: "Missing organization or user ID in membership payload" },
+        { status: 400 }
+      )
+    }
+
+    console.log(
+      `Processing organizationMembership.created: Linking User ${userId} to Agency ${agencyId}`
+    )
+
+    try {
+      await updateProfileAgencyIdAction(userId, agencyId)
+      // Action logs its own success/failure
+    } catch (error: any) {
+      console.error(
+        `Webhook Exception (organizationMembership.created): Error calling updateProfileAgencyIdAction for User ${userId}, Agency ${agencyId}:`,
+        error.message
       )
     }
   }
