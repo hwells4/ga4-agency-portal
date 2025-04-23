@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { db } from "@/db/db"
-import { agencyClientsTable } from "@/db/schema"
+import { agencyClientsTable, nangoConnectionsTable } from "@/db/schema"
 import { eq } from "drizzle-orm"
 
 export async function GET(request: NextRequest) {
@@ -38,41 +38,61 @@ export async function GET(request: NextRequest) {
 
   try {
     // --- Database Lookup Logic ---
-    const client = await db.query.agencyClients.findFirst({
-      where: eq(agencyClientsTable.clientIdentifier, clientIdentifier),
-      columns: {
-        ga4PropertyId: true,
-        nangoConnectionId: true,
-        nangoProviderConfigKey: true // Include the new field
-      }
-    })
+    // Join agencyClientsTable with nangoConnectionsTable
+    const clientWithConnection = await db
+      .select({
+        // Select required fields from both tables
+        propertyId: agencyClientsTable.propertyId,
+        nangoConnectionId: nangoConnectionsTable.nangoConnectionId,
+        providerConfigKey: nangoConnectionsTable.providerConfigKey
+      })
+      .from(agencyClientsTable)
+      .innerJoin(
+        nangoConnectionsTable,
+        eq(agencyClientsTable.nangoConnectionTableId, nangoConnectionsTable.id)
+      )
+      .where(eq(agencyClientsTable.clientIdentifier, clientIdentifier))
+      .limit(1) // Expecting only one result
+      .then(results => results[0]) // Get the first result or undefined
 
-    if (!client) {
+    if (!clientWithConnection) {
       console.warn(
-        `Client not found for identifier: ${clientIdentifier} in internal API.`
+        `Client or linked Nango connection not found for identifier: ${clientIdentifier} in internal API.`
       )
       return NextResponse.json(
-        { error: `Client not found for identifier: ${clientIdentifier}` },
+        {
+          error: `Client or linked Nango connection not found for identifier: ${clientIdentifier}`
+        },
         { status: 404 }
       )
     }
 
-    if (!client.nangoConnectionId || !client.nangoProviderConfigKey) {
+    // Check if the necessary fields were successfully retrieved from the join
+    if (
+      !clientWithConnection.propertyId || // Check propertyId too
+      !clientWithConnection.nangoConnectionId ||
+      !clientWithConnection.providerConfigKey
+    ) {
       console.error(
-        `Client ${clientIdentifier} found, but missing Nango details (connectionId or providerConfigKey).`
+        `Client ${clientIdentifier} found, but missing required details (propertyId, nangoConnectionId, or providerConfigKey) after join.`
       )
       return NextResponse.json(
-        { error: "Client Nango configuration incomplete." },
+        { error: "Client configuration details incomplete." },
         { status: 500 } // Internal configuration issue
       )
     }
 
-    // Prepare response data - use snake_case if Repo 1 expects it
+    // Prepare response data - use snake_case as expected by Repo 1
     const responseData = {
-      property_id: client.ga4PropertyId,
-      nango_connection_id: client.nangoConnectionId,
-      nango_provider_config_key: client.nangoProviderConfigKey // Return the key
+      property_id: clientWithConnection.propertyId,
+      nango_connection_id: clientWithConnection.nangoConnectionId,
+      nango_provider_config_key: clientWithConnection.providerConfigKey
     }
+
+    console.log(
+      `Internal API /get-creds returning data for ${clientIdentifier}:`,
+      responseData
+    )
 
     return NextResponse.json(responseData, { status: 200 })
   } catch (error: any) {
