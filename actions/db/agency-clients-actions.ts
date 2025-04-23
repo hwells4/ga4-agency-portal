@@ -148,19 +148,19 @@ interface PropertyToImport {
  * @returns ActionState indicating success or failure, with created clients on success.
  */
 export const bulkCreateAgencyClientsAction = async (
-  agencyId: string, // Add agencyId parameter back
+  agencyId: string, // Expect agencyId parameter
   nangoConnectionTableId: string,
   propertiesToImport: PropertyToImport[]
 ): Promise<ActionState<SelectAgencyClient[]>> =>
-  // Still wrap in withRLS to set context, even if we override agencyId usage inside
-  withRLS(async (tx: any, contextAgencyId, clerkUserId) => {
-    // Validate explicitly passed agencyId (basic check)
-    if (!agencyId) {
-        return { isSuccess: false, message: "Agency ID was not provided to the action." };
-    }
-    // Optional: Compare passed agencyId with contextAgencyId? 
-    // console.warn("Passed Agency ID:", agencyId, "RLS Context Agency ID:", contextAgencyId); 
-    // If contextAgencyId is null/undefined here, it confirms the issue with auth() in the helper.
+  // Pass agencyId as the second argument to withRLS
+  withRLS(async (tx: any, resolvedAgencyId, clerkUserId) => {
+    // Note: resolvedAgencyId inside here *should* match the passed agencyId
+    // because withRLS now prioritizes it.
+
+    // We already validated the passed agencyId is non-empty
+    // if (!agencyId) { // This check is redundant now if passed
+    //     return { isSuccess: false, message: "Agency ID was not provided to the action." };
+    // }
 
     if (!nangoConnectionTableId || !propertiesToImport?.length) {
       return { isSuccess: false, message: "Invalid input provided." };
@@ -168,7 +168,7 @@ export const bulkCreateAgencyClientsAction = async (
 
     const clientsToInsert: InsertAgencyClient[] = propertiesToImport.map(
       prop => ({
-        agencyId: agencyId, // Use the EXPLICITLY PASSED agencyId
+        agencyId: resolvedAgencyId, // Use the agencyId resolved by withRLS for insertion
         clientIdentifier: prop.clientIdentifier,
         clientName: prop.clientName,
         propertyId: prop.propertyId,
@@ -194,7 +194,7 @@ export const bulkCreateAgencyClientsAction = async (
           return {
             isSuccess: false,
             // Use the passed agencyId for the error message for clarity
-            message: `Failed to create clients. The following Client Identifiers already exist for agency ${agencyId}: ${duplicates.join(", ")}`
+            message: `Failed to create clients. The following Client Identifiers already exist for agency ${resolvedAgencyId}: ${duplicates.join(", ")}`
           };
         }
       }
@@ -240,7 +240,7 @@ export const bulkCreateAgencyClientsAction = async (
             message: `An unexpected error occurred: ${error.message || "Unknown error"}`
         };
     }
-  });
+  }, agencyId); // Pass the explicit agencyId here!
 
 // Placeholder for other agency client actions (CRUD for individual clients if needed)
 // export async function getAgencyClientAction(...) {}

@@ -329,6 +329,6 @@
 | Y.1.1| Backend: Link Profile to Agency     | Implement Clerk webhook (`organizationMembership.created`) handler to update `Profile.agencyId`. | R2 | Y.1, Profile Schema | ✅      |
 | Y.2  | Backend: GA4 Property Discovery Action| Use existing `fetchGa4PropertiesAction` using Nango token & GA4 Admin API.          | R2   | 2.16,googleapis   | ✅      |
 | Y.3  | Frontend/Backend: Trigger Discovery   | Call `fetchGa4PropertiesAction` after successful Nango connection confirmation. (Connection->Delay->Fetch action now working) | R2   | 2.24.2, Y.2       | ✅      |
-| Y.4  | Frontend: Property Selection UI       | Create modal/form (`PropertySelectionForm`) to display properties, allow selection & naming.| R2   | Y.3               | 🔄      |
-| Y.5  | Backend: Bulk Client Creation Action  | Create `bulkCreateAgencyClientsAction` to save selected properties to `agencyClientsTable`. | R2   | X.1 (Modify Schema), Y.4 | 🔄      |
-| Y.6  | Frontend: Connect UI to Bulk Action   | Wire up `PropertySelectionForm` submission to call `bulkCreateAgencyClientsAction`.           | R2   | Y.4, Y.5          | 🔄      |
+| Y.4  | Frontend: Property Selection UI       | Create modal/form (`PropertySelectionForm`) to display properties, allow selection & naming.| R2   | Y.3               | ✅      |
+| Y.5  | Backend: Bulk Client Creation Action  | Create `bulkCreateAgencyClientsAction` to save selected properties to `agencyClientsTable`. | R2   | X.1 (Modify Schema), Y.4 | ✅      |
+| Y.6  | Frontend: Connect UI to Bulk Action   | Wire up `PropertySelectionForm` submission to call `bulkCreateAgencyClientsAction`.           | R2   | Y.4, Y.5          | ✅      |

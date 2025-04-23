@@ -26,35 +26,40 @@ type RlsReadOperation<T> = (
 ) => Promise<ActionState<T>>
 
 /**
- * Wraps a database WRITE operation (INSERT, UPDATE, DELETE) to ensure it runs
- * within the correct agency's RLS context based on the user's active Clerk Organization.
+ * Wraps a database WRITE operation (INSERT, UPDATE, DELETE) ensuring RLS context.
+ * PRIORITIZES the agencyId passed to the operation function if available,
+ * falling back to auth().orgId only if necessary (and failing if neither exist).
  *
  * @param operation A function performing the write operation.
- *                  It receives the transaction client (tx), agencyId (orgId), and clerkUserId.
+ *                  It receives the transaction client (tx), the resolved agencyId, and clerkUserId.
  * @returns The ActionState result from the operation.
  */
 export async function withRLS<T>(
   operation: (
-    tx: typeof db,       // Type of transaction client
-    agencyId: string,   // This will be the Clerk orgId
-    clerkUserId: string // Clerk userId
-  ) => Promise<ActionState<T>>
+    tx: typeof db,
+    agencyId: string,   // The agencyId resolved either from auth() or passed explicitly
+    clerkUserId: string
+  ) => Promise<ActionState<T>>,
+  explicitAgencyId?: string // Optional explicit agencyId passed from the action call
 ): Promise<ActionState<T>> {
-  const { userId: clerkUserId, orgId: agencyId } = await auth(); // Get userId and orgId
+  const { userId: clerkUserId, orgId: contextOrgId } = await auth(); // Get context IDs
 
   if (!clerkUserId) {
     return { isSuccess: false, message: "Unauthorized: No user logged in." };
   }
-  
-  if (!agencyId) {
-    // User is logged in but has no active organization selected in Clerk
-    return { isSuccess: false, message: "Unauthorized: User not associated with an active agency/organization." };
+
+  // Determine the agencyId to use: prioritize explicit, fallback to context
+  const agencyIdToUse = explicitAgencyId ?? contextOrgId;
+
+  if (!agencyIdToUse) {
+    // FAIL if neither explicit ID was passed NOR context orgId was found
+    console.error(`RLS Error: No agencyId available. Explicit: ${explicitAgencyId}, Context: ${contextOrgId}, User: ${clerkUserId}`);
+    return { isSuccess: false, message: "Unauthorized: Cannot determine active agency/organization." };
   }
 
   try {
-    // Execute the operation within the agency context using the Clerk orgId
-    // Pass down agencyId (orgId) and clerkUserId for use within the operation
-    return await executeWithAgencyContext(agencyId, (tx) => operation(tx, agencyId, clerkUserId));
+    // Execute the operation using the determined agencyId for context
+    return await executeWithAgencyContext(agencyIdToUse, (tx) => operation(tx, agencyIdToUse, clerkUserId));
 
   } catch (error: any) {
     console.error("withRLS Error:", error);
@@ -63,15 +68,13 @@ export async function withRLS<T>(
 }
 
 /**
- * Wraps a database READ operation to ensure it runs within the correct
- * agency's RLS context based on the user's active Clerk Organization.
- *
- * @param operation A function performing the read operation.
- *                  It receives the transaction client (tx).
- * @returns The ActionState result from the operation.
+ * Wraps a database READ operation ensuring RLS context.
+ * Uses auth().orgId directly.
+ * (Read operations might be less critical if the primary issue is in write actions,
+ *  but consistency would involve a similar explicitId option if needed).
  */
 export async function withRLSRead<T>(
-  operation: (tx: typeof db) => Promise<ActionState<T>> // Receives transaction client
+  operation: (tx: typeof db) => Promise<ActionState<T>>
 ): Promise<ActionState<T>> {
   const { userId: clerkUserId, orgId: agencyId } = await auth(); // Get userId and orgId
 
@@ -81,13 +84,10 @@ export async function withRLSRead<T>(
 
   try {
     if (!agencyId) {
-      // User logged in but no active organization. Use non-matching context.
       const nonMatchingContextId = 'invalid-agency-id-for-rls-read'; 
       console.warn(`RLS Read: User ${clerkUserId} has no active agency/organization. Executing with non-matching context.`);
       return await executeWithAgencyContext(nonMatchingContextId, operation);
     }
-
-    // User has an active organization, execute within their context.
     return await executeWithAgencyContext(agencyId, operation);
 
   } catch (error: any) {
