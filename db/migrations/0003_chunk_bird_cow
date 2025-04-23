@@ -1,7 +1,0 @@
--- If you want to keep data
-UPDATE "agency_clients"
-SET credential_reference = vault_secret_id
-WHERE credential_reference IS NULL;
-
--- Now safely drop the old column
-ALTER TABLE "agency_clients" DROP COLUMN IF EXISTS "vault_secret_id";

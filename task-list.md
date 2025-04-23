@@ -309,11 +309,25 @@
 
 ## Phase X: Multi-Property Refactor <a name="phase-x-multi-property-refactor"></a>
 **Goal:** Adapt the system to handle multiple GA4 properties accessible via a single Nango connection.
+*Note: Some initial multi-property schema aspects were added in Phase 2, but this phase focuses on the full refactor and UX.*
 
 | ID   | Task                             | Description                                                                                                 | Repo | Dependencies | Status |
 |------|----------------------------------|-------------------------------------------------------------------------------------------------------------|------|--------------|--------|
-| X.1  | Refactor Schema                  | Remove `ga4PropertyId` from `agencyClientsTable`. `AgencyClient` now primarily represents the Nango link. | R2   | 2.12         | 🔄      |
+| X.1  | Refactor Schema                  | Remove/Relax `ga4PropertyId` constraint from `agencyClientsTable`. Rename to `propertyId` if needed.        | R2   | 2.12         | 🔄      |
 | X.2  | Update Internal API              | Modify `/api/internal/get-creds` to *not* query or return `property_id`.                                  | R2   | 2.18.4, X.1  | 🔄      |
 | X.3  | Update MCP Tool `query_ga4_report`| Add required `property_id: str` parameter. Use this user-provided ID for the GA4 API call.                  | R1   | 1.36, X.2    | 🔄      |
 | X.4  | (Optional) Implement Discovery Tool | Create `list_ga4_properties(client_identifier: str)` tool using GA4 Admin API via Nango credentials.   | R1   | X.2          | 🔄      |
 | X.5  | Update Portal Property Handling  | Implement UI/backend logic for fetching, displaying, and potentially selecting/storing properties post-Nango. | R2   | 2.24.2       | 🔄      |
+
+
+## Phase Y: Enhanced Onboarding Flow <a name="phase-y-enhanced-onboarding"></a>
+**Goal:** Implement a smoother user onboarding experience that automatically creates initial records, guides GA4 connection, and allows bulk property selection/naming.
+
+| ID   | Task                                  | Description                                                                                 | Repo | Dependencies      | Status |
+|------|---------------------------------------|---------------------------------------------------------------------------------------------|------|-------------------|--------|
+| Y.1  | Backend: Auto-create Profile/Agency   | Implement Clerk webhook (`user.created`) handler to create `Agency` & `Profile` records.      | R2   | 2.12 (Confirmed)  | 🔄      |
+| Y.2  | Backend: GA4 Property Discovery Action| Create `discoverGa4PropertiesAction` using Nango token & GA4 Admin API.                     | R2   | 2.16,googleapis   | 🔄      |
+| Y.3  | Frontend/Backend: Trigger Discovery   | Call `discoverGa4PropertiesAction` after successful Nango connection confirmation.            | R2   | 2.24.2, Y.2       | 🔄      |
+| Y.4  | Frontend: Property Selection UI       | Create modal/form (`PropertySelectionForm`) to display properties, allow selection & naming.| R2   | Y.3               | 🔄      |
+| Y.5  | Backend: Bulk Client Creation Action  | Create `bulkCreateAgencyClientsAction` to save selected properties to `agencyClientsTable`. | R2   | X.1 (Modify Schema), Y.4 | 🔄      |
+| Y.6  | Frontend: Connect UI to Bulk Action   | Wire up `PropertySelectionForm` submission to call `bulkCreateAgencyClientsAction`.           | R2   | Y.4, Y.5          | 🔄      |
