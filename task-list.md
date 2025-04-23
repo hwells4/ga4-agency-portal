@@ -90,9 +90,9 @@
 | 1.16 | Define query_ga4_report tool | Create function decorated with @mcp.tool() | F1.2 | 1.4 | ✅ |
 | 1.17 | Define tool parameters | **Add parameter `client_identifier: str`**. Other params: metrics, dimensions, date_range, etc. | F1.2 | 1.16 | ✅ |
 | 1.18 | Read environment variables | **Get Internal API URL/Secret**, **Nango Base URL/Secret/Integration ID** from env vars | F1.2 | 1.17 | ✅ |
-| 1.19 | Call fetch_connection_details | Use **internal_api_client** to get **`property_id` and `nango_connection_id`**, handle errors | F1.2 | 1.9, 1.18 | ✅ |
-| 1.20 | Extract connection data | Parse `property_id` and `nango_connection_id` from internal API response | F1.2 | 1.19 | ✅ |
-| 1.20.1 | Call Nango API Client | **Use `nango_client.fetch_nango_credentials` with fetched `nango_connection_id` to get `access_token`, handle errors** | F2.3, T2.5 | 1.20, 1.35 | ✅ |
+| 1.19 | Call fetch_connection_details | Use **internal_api_client** to get **`property_id`, `nango_connection_id`, `nango_provider_config_key`** via `/api/internal/get-creds`, handle errors | F1.2, T2.4 | 1.9, 1.18, 2.18.4 | ✅ |
+| 1.20 | Extract connection data | Parse `property_id`, `nango_connection_id`, `nango_provider_config_key` from internal API response | F1.2 | 1.19 | ✅ |
+| 1.20.1 | Call Nango API Client | **Use `nango_client.fetch_nango_credentials` with fetched `nango_connection_id`+`key` to get `access_token`, handle errors** | F2.3, T2.5 | 1.20, 1.35 | ✅ |
 | 1.21 | Prepare request arguments | Build report_request_args dict from tool parameters | F1.2 | 1.20 | ✅ |
 | 1.22 | Call GA4 adapter | Execute `ga4_client_adapter.execute_ga4_run_report` **passing `access_token` and `property_id`** | F1.2 | 1.15, 1.20.1, 1.21 | ✅ |
 | 1.23 | Return formatted result | Return data/error as JSON string | F1.2 | 1.22 | ✅ |
@@ -133,9 +133,9 @@
 
 | ID | Task | Description | PRD Ref | Dependencies | Status |
 |----|------|-------------|---------|--------------|--------|
-| 2.4 | Create API endpoint | Add route.ts in `app/api/internal/get-connection-details/` (or similar) | T1.6 | 2.3 | ✅ |
+| 2.4 | Create API endpoint | Add route.ts in `app/api/internal/get-creds/` | T1.6 | 2.3 | ✅ |
 | 2.5 | Implement security check | Verify X-Internal-Secret header against env var | S1.3 | 2.4 | ✅ |
-| 2.6 | Return hardcoded response | For MVP, return test **`propertyId` AND test `nangoConnectionId`** JSON | T1.6 | 2.5 | ✅ |
+| 2.6 | Return hardcoded response | For MVP, return test **`propertyId` AND test `nangoConnectionId`** JSON | T1.6 | 2.5 | 🚫 |
 | 2.7 | Add placeholder comments | Document future DB/credential handling plans | S1.2 | 2.6 | ✅ |
 
 #### Deployment & Configuration
@@ -183,7 +183,7 @@
 
 | ID | Task | Description | PRD Ref | Dependencies | Status |
 |----|------|-------------|---------|--------------|--------|
-| 2.18 | Enhance API endpoint | Update endpoint to use real database lookups | T2.4 | 2.17 | ✅ |
+| 2.18 | Enhance API endpoint | Use existing `/api/internal/get-creds` route for real database lookups | T2.4 | 2.17 | ✅ |
 | 2.18.1 | Accept client_identifier | Use passed client_identifier for lookups | T2.4 | 2.18 | ✅ |
 | 2.18.2 | Implement DB lookup | Query database for client to get **`property_id`, `nango_connection_id`, and `nango_provider_config_key`** | T2.4 | 2.18.1 | ✅ |
 | 2.18.3 | Return connection details | Format and return actual `property_id`, `nango_connection_id`, and `nango_provider_config_key` | T2.4 | 2.18.2 | ✅ |
@@ -207,7 +207,7 @@
 |------|---------------------------|---------------------------------------------------------------------------------|-----------------|--------------|--------|
 | 2.20 | Write backend tests       | Test Server Actions and API logic                                               | F2.2, T2.4      | 2.18         | 🔄      |
 | 2.21 | Test Portal UI            | Manually test the complete UI flow                                              | F2.1            | 2.19.5       | 🔄      |
-| 2.22 | **Test Nango Connection**   | **Verify `fetchGa4PropertiesAction` works after manual connection/storage**     | F2.1, F2.2      | 2.16, 2.18.4 | ✅      |
+| 2.22 | **Test Nango Connection**   | **Verify `fetchGa4PropertiesAction` works after Nango connection/webhook/polling** | F2.1, F2.2      | 2.16, 2.24.2 | ✅      |
 | 2.23 | **Verify Nango Webhook**  | **Confirm Nango webhook successfully triggers callback & DB update.**           | F2.2, T2.3      | 2.16, 2.18.4 | ✅      |
 | 2.24 | Implement Connection Polling| **Add frontend logic to poll `/api/nango/check-status` for webhook completion status.** (Implemented in test component) | F2.1 (Implied)  | 2.18.5, 2.23 | ✅      |
 | 2.24.1 | Debug Build Errors | Resolved persistent build error for dynamic route handler signature (required `"use server"` + `await params`) | N/A | 2.18.5 | ✅ |
@@ -217,8 +217,8 @@
 
 | ID   | Task                             | Description                                                                    | PRD Ref | Dependencies | Status |
 |------|----------------------------------|--------------------------------------------------------------------------------|---------|--------------|--------|
-| 1.35 | Update query_ga4_report          | **(Requires Repo 1 changes - Needs to parse new API response, use Nango key)** | F2.3    | 2.18.4       | 🔄      |
-| 1.36 | Add credential error handling    | Handle cases where internal API or Nango API calls fail                        | F2.3    | 1.35         | 🔄      |
+| 1.35 | Update query_ga4_report          | **MCP Tool updated to call Internal API, then Nango API for token** | F2.3    | 2.18.4       | ✅      |
+| 1.36 | Add credential error handling    | Handle cases where internal API or Nango API calls fail                        | F2.3    | 1.35         | ✅      |
 | 1.37 | Write credential tests           | Add tests for dynamic credential handling via internal API and Nango calls     | F2.3    | 1.36         | 🔄      |
 
 ### Integration Testing <a name="integration-phase2"></a>
@@ -306,3 +306,14 @@
 | S2.4 | Secure communication | 1.7, 2.5 |
 | S3.1 | Input validation | P3.3, P3.4 |
 | S4.1 | Key Management | P4.4 |
+
+## Phase X: Multi-Property Refactor <a name="phase-x-multi-property-refactor"></a>
+**Goal:** Adapt the system to handle multiple GA4 properties accessible via a single Nango connection.
+
+| ID   | Task                             | Description                                                                                                 | Repo | Dependencies | Status |
+|------|----------------------------------|-------------------------------------------------------------------------------------------------------------|------|--------------|--------|
+| X.1  | Refactor Schema                  | Remove `ga4PropertyId` from `agencyClientsTable`. `AgencyClient` now primarily represents the Nango link. | R2   | 2.12         | 🔄      |
+| X.2  | Update Internal API              | Modify `/api/internal/get-creds` to *not* query or return `property_id`.                                  | R2   | 2.18.4, X.1  | 🔄      |
+| X.3  | Update MCP Tool `query_ga4_report`| Add required `property_id: str` parameter. Use this user-provided ID for the GA4 API call.                  | R1   | 1.36, X.2    | 🔄      |
+| X.4  | (Optional) Implement Discovery Tool | Create `list_ga4_properties(client_identifier: str)` tool using GA4 Admin API via Nango credentials.   | R1   | X.2          | 🔄      |
+| X.5  | Update Portal Property Handling  | Implement UI/backend logic for fetching, displaying, and potentially selecting/storing properties post-Nango. | R2   | 2.24.2       | 🔄      |
