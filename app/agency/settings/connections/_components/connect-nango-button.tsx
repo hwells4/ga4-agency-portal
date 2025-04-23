@@ -12,6 +12,7 @@ import Nango from "@nangohq/frontend"
 import { useToast } from "@/components/ui/use-toast"
 import PropertySelectionForm from "./property-selection-form"
 import { SelectAgencyClient } from "@/db/schema"
+import { ActionState } from "@/types"
 
 interface ConnectNangoButtonProps {
   agencyId: string
