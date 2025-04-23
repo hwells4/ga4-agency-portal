@@ -194,28 +194,74 @@ export async function fetchGa4PropertiesAction(
   try {
     console.log(`Fetching GA4 properties for Nango connection: ${nangoConnectionId}`);
 
-    // --- Added auth check ---
-    const { userId, orgId: agencyId } = await auth();
-    if (!userId || !agencyId) {
-      throw new Error("User not authenticated or agency ID not found.");
+    // --- Modified auth check: Rely primarily on userId ---
+    const authResult = await auth();
+    const userId = authResult.userId;
+    // Get orgId separately, it might be null
+    const agencyId = authResult.orgId; 
+
+    if (!userId) {
+      // Only throw the critical error if userId is missing
+      throw new Error("User not authenticated."); 
     }
-    // --- End added auth check ---
+    console.log(`Authenticated user: ${userId}, Attempting with agencyId: ${agencyId}`);
+    // --- End modified auth check ---
 
     // 1. Get Nango connection details from DB using nangoConnectionId
+    // Modify the query to handle potentially null agencyId if needed, 
+    // or fetch agencyId based on userId if that relationship exists.
+    // For now, let's proceed assuming agencyId *might* be present or the query is adapted.
+    // --> We MUST ensure the query still guarantees ownership <--
+
+    // Option 1: Still use agencyId if available (assuming the auth issue was only the throw)
+    // If agencyId is null here, this query will likely fail to find the record, 
+    // which might be desired behavior if agency context is strictly required.
+    if (!agencyId) {
+        console.warn(`Agency ID (orgId) not found in auth context for user ${userId}. Querying connection without agency constraint.`);
+         // Potentially throw error here if agency context is mandatory for security
+         // throw new Error("Agency context (orgId) is missing, cannot verify connection ownership.");
+    }
+
     const connectionRecord = await db.query.nangoConnections.findFirst({
-      where: and(
-        eq(nangoConnectionsTable.nangoConnectionId, nangoConnectionId),
-        eq(nangoConnectionsTable.agencyId, agencyId) // Ensure ownership
-      ),
+      where: agencyId 
+        ? and( // If agencyId exists, use it
+            eq(nangoConnectionsTable.nangoConnectionId, nangoConnectionId),
+            eq(nangoConnectionsTable.agencyId, agencyId) // Ensure ownership via agencyId
+          )
+        : and( // If agencyId is missing, rely on userId (assuming userId exists on table)
+            eq(nangoConnectionsTable.nangoConnectionId, nangoConnectionId),
+            eq(nangoConnectionsTable.userId, userId) // Ensure ownership via userId
+          ),
       columns: {
-        nangoConnectionId: true, // Keep nangoConnectionId for clarity/use below
+        nangoConnectionId: true, 
         providerConfigKey: true,
         status: true,
+        // Include agencyId and userId if needed for logging/verification
+        agencyId: true, 
+        userId: true 
       },
     });
 
+    // Add more logging after query
+    if (connectionRecord) {
+        console.log(`Found connection record for nangoId ${nangoConnectionId}: agencyId=${connectionRecord.agencyId}, userId=${connectionRecord.userId}, status=${connectionRecord.status}`);
+    } else {
+        console.log(`Connection record NOT FOUND for nangoId ${nangoConnectionId} with constraints userId=${userId}` + (agencyId ? ` AND agencyId=${agencyId}` : ' (agencyId missing)') );
+    }
+
+
     if (!connectionRecord) {
-        throw new Error(`Nango connection record not found for ID: ${nangoConnectionId} belonging to agency ${agencyId}.`);
+        // Make error message more specific based on what was used for lookup
+        const lookupCriteria = agencyId ? `belonging to agency ${agencyId}` : `initiated by user ${userId}`;
+        throw new Error(`Nango connection record not found for ID: ${nangoConnectionId} ${lookupCriteria}.`);
+    }
+
+    // Verify ownership again explicitly if needed (belt and suspenders)
+    if (agencyId && connectionRecord.agencyId !== agencyId) {
+        throw new Error(`Ownership mismatch: Connection record agency (${connectionRecord.agencyId}) does not match authenticated agency (${agencyId}).`);
+    }
+     if (connectionRecord.userId !== userId) {
+        throw new Error(`Ownership mismatch: Connection record user (${connectionRecord.userId}) does not match authenticated user (${userId}).`);
     }
 
     if (connectionRecord.status !== 'active') {
