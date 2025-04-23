@@ -8,10 +8,9 @@ import {
 } from "@/db/schema";
 import { ActionState } from "@/types";
 import { withRLS, withRLSRead } from "./rls-helpers"; // Import RLS wrappers
-import { eq } from "drizzle-orm";
+import { eq, sql, inArray } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { auth } from "@clerk/nextjs/server";
-import { sql } from "drizzle-orm";
 
 // CREATE Action
 export const createAgencyClientAction = async (
@@ -147,99 +146,90 @@ interface PropertyToImport {
  * @param propertiesToImport - An array of properties selected by the user.
  * @returns ActionState indicating success or failure, with created clients on success.
  */
-export async function bulkCreateAgencyClientsAction(
-  agencyId: string,
+export const bulkCreateAgencyClientsAction = async (
   nangoConnectionTableId: string,
   propertiesToImport: PropertyToImport[]
-): Promise<ActionState<SelectAgencyClient[]>> {
-  const { userId } = await auth();
-
-  if (!userId) {
-    return { isSuccess: false, message: "Unauthorized: User not logged in." };
-  }
-
-  // Basic validation
-  if (!agencyId || !nangoConnectionTableId || !propertiesToImport?.length) {
-    return { isSuccess: false, message: "Invalid input provided." };
-  }
-
-  // TODO: Add check to ensure the calling user belongs to the specified agencyId
-
-  const clientsToInsert: InsertAgencyClient[] = propertiesToImport.map(
-    prop => ({
-      agencyId: agencyId,
-      clientIdentifier: prop.clientIdentifier,
-      clientName: prop.clientName, // Use the user-provided name
-      propertyId: prop.propertyId,
-      nangoConnectionTableId: nangoConnectionTableId,
-      // Default status is 'pending', it might update based on Nango connection validation later
-      credentialStatus: "pending", // Or perhaps 'validated' if connection is good? Consider logic.
-      // createdAt and updatedAt will be handled by the database defaults
-    })
-  );
-
-  try {
-    // Check for duplicate clientIdentifiers within the same agency *before* inserting
-    const existingIdentifiers = await db
-      .select({ clientIdentifier: agencyClientsTable.clientIdentifier })
-      .from(agencyClientsTable)
-      .where(
-        sql`${agencyClientsTable.agencyId} = ${agencyId} AND ${agencyClientsTable.clientIdentifier} IN ${sql.placeholder("identifiers")}`
-      )
-      .prepare("existing_identifiers_check")
-      .execute({
-        identifiers: clientsToInsert.map(c => c.clientIdentifier)
-      });
-
-    if (existingIdentifiers.length > 0) {
-      const duplicates = existingIdentifiers.map(e => e.clientIdentifier);
-      return {
-        isSuccess: false,
-        message: `Failed to create clients. The following Client Identifiers already exist for this agency: ${duplicates.join(", ")}`
-      };
+): Promise<ActionState<SelectAgencyClient[]>> =>
+  withRLS(async (tx: any, agencyId, clerkUserId) => {
+    if (!nangoConnectionTableId || !propertiesToImport?.length) {
+      return { isSuccess: false, message: "Invalid input provided." };
     }
 
-    // Perform the bulk insert
-    const insertedClients = await db
-      .insert(agencyClientsTable)
-      .values(clientsToInsert)
-      .returning();
+    const clientsToInsert: InsertAgencyClient[] = propertiesToImport.map(
+      prop => ({
+        agencyId: agencyId,
+        clientIdentifier: prop.clientIdentifier,
+        clientName: prop.clientName, // Use the user-provided name
+        propertyId: prop.propertyId,
+        nangoConnectionTableId: nangoConnectionTableId,
+        // Default status is 'pending', it might update based on Nango connection validation later
+        credentialStatus: "pending", // Or perhaps 'validated' if connection is good? Consider logic.
+        // createdAt and updatedAt will be handled by the database defaults
+      })
+    );
 
-    if (!insertedClients || insertedClients.length !== clientsToInsert.length) {
-      // This case might indicate a partial insert or unexpected DB behavior
-      console.error("Bulk insert mismatch:", {
-        expected: clientsToInsert.length,
-        inserted: insertedClients?.length ?? 0
-      });
+    try {
+      // Updated Duplicate Check
+      const identifiersToCheck = clientsToInsert.map(c => c.clientIdentifier);
+
+      // Only perform check if there are identifiers
+      if (identifiersToCheck.length > 0) {
+        const existingIdentifiers = await tx
+          .select({ clientIdentifier: agencyClientsTable.clientIdentifier })
+          .from(agencyClientsTable)
+          // RLS implicitly filters by agencyId
+          .where(inArray(agencyClientsTable.clientIdentifier, identifiersToCheck));
+
+        if (existingIdentifiers.length > 0) {
+          const duplicates = existingIdentifiers.map((e: any) => e.clientIdentifier);
+          return {
+            isSuccess: false,
+            message: `Failed to create clients. The following Client Identifiers already exist for your agency: ${duplicates.join(", ")}`
+          };
+        }
+      }
+
+      // Perform the bulk insert
+      const insertedClients = await tx
+        .insert(agencyClientsTable)
+        .values(clientsToInsert)
+        .returning();
+
+      if (!insertedClients || insertedClients.length !== clientsToInsert.length) {
+        // This case might indicate a partial insert or unexpected DB behavior
+        console.error("Bulk insert mismatch:", {
+          expected: clientsToInsert.length,
+          inserted: insertedClients?.length ?? 0
+        });
+        return {
+          isSuccess: false,
+          message:
+            "Failed to create all selected clients. Please check and try again."
+        };
+      }
+
+      return {
+        isSuccess: true,
+        message: `Successfully created ${insertedClients.length} client configuration(s).`,
+        data: insertedClients
+      };
+    } catch (error: any) {
+      console.error("Error creating bulk agency clients:", error);
+      // Catch potential unique constraint violations explicitly if needed,
+      // although the pre-check should minimize this for clientIdentifier.
+      if (error.code === "23505") {
+        // Likely unique constraint violation (e.g., maybe propertyId unique per agency?)
+        return {
+          isSuccess: false,
+          message: `Failed to create clients due to a conflict. Ensure Property IDs and Client Identifiers are unique within your agency.`
+        };
+      }
       return {
         isSuccess: false,
-        message:
-          "Failed to create all selected clients. Please check and try again."
+        message: `An unexpected error occurred: ${error.message || "Unknown error"}`
       };
     }
-
-    return {
-      isSuccess: true,
-      message: `Successfully created ${insertedClients.length} client configuration(s).`,
-      data: insertedClients
-    };
-  } catch (error: any) {
-    console.error("Error creating bulk agency clients:", error);
-    // Catch potential unique constraint violations explicitly if needed,
-    // although the pre-check should minimize this for clientIdentifier.
-    if (error.code === "23505") {
-      // Likely unique constraint violation (e.g., maybe propertyId unique per agency?)
-      return {
-        isSuccess: false,
-        message: `Failed to create clients due to a conflict. Ensure Property IDs and Client Identifiers are unique within your agency.`
-      };
-    }
-    return {
-      isSuccess: false,
-      message: `An unexpected error occurred: ${error.message || "Unknown error"}`
-    };
-  }
-}
+  });
 
 // Placeholder for other agency client actions (CRUD for individual clients if needed)
 // export async function getAgencyClientAction(...) {}
