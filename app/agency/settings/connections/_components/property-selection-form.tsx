@@ -178,7 +178,6 @@ export default function PropertySelectionForm({
 
     try {
       const result = await bulkCreateAgencyClientsAction(
-        agencyId,
         nangoConnectionTableId,
         propertiesToImport
       )
