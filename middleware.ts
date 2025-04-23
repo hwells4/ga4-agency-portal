@@ -4,10 +4,31 @@ Contains middleware for protecting routes, checking user authentication, and red
 </ai_context>
 */
 
-import { clerkMiddleware } from "@clerk/nextjs/server"
+import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server"
 
-// Simplest form: Protects everything matched by config.matcher except publicRoutes
-export default clerkMiddleware()
+const isProtectedRoute = createRouteMatcher([
+  '/agency(.*)', // Protect all agency routes
+  '/api/nango/connection-status(.*)', // Specifically protect the status API route
+  // Add other protected routes here, excluding those in publicRoutes
+]);
+
+const isPublicRoute = createRouteMatcher([
+  '/login(.*)',
+  '/signup(.*)',
+  '/api/internal/(.*)', // Internal API remains public (uses own auth)
+  '/api/nango/callback', // Nango webhook remains public
+  // Add "/" if the homepage should be public
+  // Add any other explicitly public routes here
+]);
+
+// Use createRouteMatcher to define protected routes
+export default clerkMiddleware((auth, req) => {
+  // If it's not a public route, protect it
+  if (!isPublicRoute(req)) {
+    // Restrict access to protected routes if the user is not logged in.
+    if (isProtectedRoute(req)) auth.protect();
+  }
+});
 
 export const config = {
   matcher: [
@@ -18,13 +39,6 @@ export const config = {
     // Match all API and TRPC routes
     "/(api|trpc)(.*)"
   ],
-  // Define public routes directly in the config
-  publicRoutes: [
-      "/login(.*)", // Match login paths
-      "/signup(.*)", // Match signup paths
-      "/api/internal/(.*)", // Internal API is public (uses own auth)
-      "/api/nango/callback", // Nango webhook is public
-      // Add "/" if the homepage should be public
-      // Add any other public routes here
-   ]
+  // publicRoutes is no longer needed here as we use createRouteMatcher
+  // publicRoutes: [...]
 }
