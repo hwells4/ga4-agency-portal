@@ -4,7 +4,6 @@ import { auth } from "@clerk/nextjs/server"
 import { eq } from "drizzle-orm"
 import { db } from "@/db/db"
 import { executeWithAgencyContext } from "@/db/rls"
-import { agenciesTable } from "@/db/schema"
 import { ActionState } from "@/types"
 
 // Type definition for the operation function passed to withRLS
@@ -27,105 +26,72 @@ type RlsReadOperation<T> = (
 ) => Promise<ActionState<T>>
 
 /**
- * Fetches the agency ID associated with the currently authenticated Clerk user.
- * Relies on the agenciesTable having a userId column matching the Clerk userId.
- *
- * @param clerkUserId The Clerk user ID.
- * @returns The agency ID (string/text) or null if not found.
- * @throws Error if agenciesTable.userId column definition is missing.
- */
-async function getCurrentAgencyId(clerkUserId: string): Promise<string | null> {
-  // Runtime check to ensure the schema has the necessary column for this logic
-  // Note: Drizzle's type system doesn't easily allow checking for specific columns
-  // on the imported table object itself in a type-safe way before the query.
-  // This check assumes the schema file is correctly defined.
-  // A more robust check might involve querying information_schema, but that's overkill here.
-  // We rely on the developer ensuring agenciesTable includes userId.
-
-  const agency = await db.query.agencies.findFirst({
-    columns: { id: true },
-    where: eq(agenciesTable.userId, clerkUserId),
-  });
-  return agency?.id ?? null; // agency.id is TEXT
-}
-
-/**
  * Wraps a database WRITE operation (INSERT, UPDATE, DELETE) to ensure it runs
- * within the correct agency's RLS context.
+ * within the correct agency's RLS context based on the user's active Clerk Organization.
  *
  * @param operation A function performing the write operation.
- *                  It receives the transaction client (tx), agencyId, and clerkUserId.
+ *                  It receives the transaction client (tx), agencyId (orgId), and clerkUserId.
  * @returns The ActionState result from the operation.
  */
 export async function withRLS<T>(
   operation: (
-    tx: typeof db,
-    agencyId: string,
-    clerkUserId: string
+    tx: typeof db,       // Type of transaction client
+    agencyId: string,   // This will be the Clerk orgId
+    clerkUserId: string // Clerk userId
   ) => Promise<ActionState<T>>
 ): Promise<ActionState<T>> {
-  const authResult = await auth();
-  const clerkUserId = authResult?.userId;
+  const { userId: clerkUserId, orgId: agencyId } = await auth(); // Get userId and orgId
 
-  if (!clerkUserId) return { isSuccess: false, message: "Unauthorized: No user logged in." };
+  if (!clerkUserId) {
+    return { isSuccess: false, message: "Unauthorized: No user logged in." };
+  }
+  
+  if (!agencyId) {
+    // User is logged in but has no active organization selected in Clerk
+    return { isSuccess: false, message: "Unauthorized: User not associated with an active agency/organization." };
+  }
 
   try {
-    const agencyId = await getCurrentAgencyId(clerkUserId);
-    if (!agencyId) {
-      // This check prevents operations if the user isn't linked to an agency.
-      return { isSuccess: false, message: "Unauthorized: User not associated with an agency." };
-    }
-
-    // Execute the operation within the agency context
-    // Pass down agencyId and clerkUserId for potential use within the operation (e.g., setting agencyId on insert)
+    // Execute the operation within the agency context using the Clerk orgId
+    // Pass down agencyId (orgId) and clerkUserId for use within the operation
     return await executeWithAgencyContext(agencyId, (tx) => operation(tx, agencyId, clerkUserId));
 
   } catch (error: any) {
     console.error("withRLS Error:", error);
-    // Catch errors from getCurrentAgencyId or executeWithAgencyContext
     return { isSuccess: false, message: `Internal RLS error: ${error.message}` };
   }
 }
 
 /**
  * Wraps a database READ operation to ensure it runs within the correct
- * agency's RLS context, or a non-matching context if the user has no agency.
+ * agency's RLS context based on the user's active Clerk Organization.
  *
  * @param operation A function performing the read operation.
  *                  It receives the transaction client (tx).
  * @returns The ActionState result from the operation.
  */
 export async function withRLSRead<T>(
-  operation: (tx: typeof db) => Promise<ActionState<T>>
+  operation: (tx: typeof db) => Promise<ActionState<T>> // Receives transaction client
 ): Promise<ActionState<T>> {
-  const authResult = await auth();
-  const clerkUserId = authResult?.userId;
+  const { userId: clerkUserId, orgId: agencyId } = await auth(); // Get userId and orgId
 
-  if (!clerkUserId) return { isSuccess: false, message: "Unauthorized: No user logged in." };
+  if (!clerkUserId) {
+    return { isSuccess: false, message: "Unauthorized: No user logged in." };
+  }
 
   try {
-    const agencyId = await getCurrentAgencyId(clerkUserId);
-
     if (!agencyId) {
-      // User is logged in but not linked to an agency.
-      // Execute the operation in a context that RLS policies won't match.
-      // Use a non-existent or clearly invalid ID (like an empty string or specific placeholder).
-      // Policies comparing text equality will fail, effectively blocking reads.
-      const nonMatchingContextId = 'invalid-agency-id-for-rls-read'; // Or empty string ""
-      console.warn(`RLS Read: User ${clerkUserId} has no agency. Executing with non-matching context.`);
+      // User logged in but no active organization. Use non-matching context.
+      const nonMatchingContextId = 'invalid-agency-id-for-rls-read'; 
+      console.warn(`RLS Read: User ${clerkUserId} has no active agency/organization. Executing with non-matching context.`);
       return await executeWithAgencyContext(nonMatchingContextId, operation);
-
-      // Alternative: If reads should just return empty data for users without an agency:
-      // return { isSuccess: true, message: "No agency association found.", data: [] as unknown as T };
-      // Choose the behavior that makes sense for your application.
     }
 
-    // User has an agency, execute within their context.
+    // User has an active organization, execute within their context.
     return await executeWithAgencyContext(agencyId, operation);
 
   } catch (error: any) {
     console.error("withRLSRead Error:", error);
-    // Catch errors from getCurrentAgencyId or executeWithAgencyContext
     return { isSuccess: false, message: `Internal RLS read error: ${error.message}` };
   }
 } 
