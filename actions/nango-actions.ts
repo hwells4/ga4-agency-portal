@@ -61,17 +61,20 @@ export async function initiateNangoConnectionAction(
     // Ask Nango for a secure session token
     const result = await nango.createConnectSession({
       end_user: {
-        // Use userId as the unique identifier for this specific connection instance
         id: userId
       },
       organization: {
-        // Use agencyId as the organization identifier in Nango
         id: agencyId
       },
-      // Only allow connecting the specific integration requested
       allowed_integrations: [providerConfigKey],
-      // Pass the state
-      state: statePayload
+      // Pass state via integrations_config_defaults, keyed by providerConfigKey
+      integrations_config_defaults: {
+        [providerConfigKey]: { // Key is the provider config key
+           connection_config: { // Embed custom params here
+              state: statePayload
+           }
+        }
+      }
     })
 
     if (!result?.data?.token) {
@@ -97,28 +100,31 @@ export async function initiateNangoConnectionAction(
 }
 
 /**
- * Stores the Nango connection ID received from the callback into the database.
- * Creates a new record in nangoConnectionsTable and links it to the agency client.
- * Called by the /api/nango/callback route.
- * @param agencyClientId - The ID of the agency client (passed via state).
+ * Stores the Nango connection details received from the callback into the database.
+ * Creates a new record in nangoConnectionsTable linked to the agency and user.
+ * Called by the /api/nango/callback GET handler.
  * @param nangoConnectionId - The connection ID received from Nango.
  * @param nangoProviderConfigKey - The provider config key received from Nango.
- * @param agencyId - The ID of the agency.
- * @param userId - The ID of the user.
+ * @param agencyId - The ID of the agency associated with this connection.
+ * @param userId - The ID of the user who initiated the connection.
  */
 export async function storeNangoConnectionIdAction(
-  agencyClientId: string,
   nangoConnectionId: string,
   nangoProviderConfigKey: string,
   agencyId: string,
   userId: string
-): Promise<ActionState<void>> {
+): Promise<ActionState<{ nangoConnectionRecordId: string }>> {
   try {
-    console.log(
-      `Storing Nango connection ID ${nangoConnectionId} (provider: ${nangoProviderConfigKey}) for agency client ${agencyClientId}`
-    )
+    // Basic validation
+    if (!agencyId || !userId || !nangoConnectionId || !nangoProviderConfigKey) {
+        throw new Error("Missing required parameters to store Nango connection.");
+    }
 
-    // 1. Find or Create the Nango Connection record
+    console.log(
+      `Storing Nango connection ID ${nangoConnectionId} (provider: ${nangoProviderConfigKey}) for agency: ${agencyId}, user: ${userId}`
+    );
+
+    // 1. Create the Nango Connection record (removed client linkage logic)
     const [nangoConnectionRecord] = await db
       .insert(nangoConnectionsTable)
       .values({
@@ -126,15 +132,15 @@ export async function storeNangoConnectionIdAction(
         providerConfigKey: nangoProviderConfigKey,
         agencyId: agencyId,
         userId: userId,
-        // createdAt/updatedAt are handled by default, status defaults to 'pending'
+        status: "active", // Set to active immediately upon successful callback storage
       })
       .onConflictDoUpdate({
-        target: nangoConnectionsTable.nangoConnectionId, // Unique constraint on nangoConnectionId
+        target: nangoConnectionsTable.nangoConnectionId,
         set: {
           providerConfigKey: nangoProviderConfigKey,
-          agencyId: agencyId, // Update agencyId on conflict
-          userId: userId, // Update userId on conflict
-          status: "pending", // Reset status on conflict? Or maybe 'active'? Let's stick with pending for now.
+          agencyId: agencyId,
+          userId: userId,
+          status: "active", // Update status to active on conflict too
           updatedAt: new Date(),
         },
       })
@@ -142,46 +148,37 @@ export async function storeNangoConnectionIdAction(
 
     if (!nangoConnectionRecord?.id) {
       throw new Error(
-        `Failed to create or find Nango connection record for ID: ${nangoConnectionId}`
-      )
+        `Failed to create or find Nango connection record for Nango ID: ${nangoConnectionId}`
+      );
     }
 
+    const newRecordId = nangoConnectionRecord.id;
     console.log(
-      `Nango connection record ID: ${nangoConnectionRecord.id} associated with Nango ID: ${nangoConnectionId}`
-    )
+      `Nango connection record ID: ${newRecordId} created/updated successfully for Nango ID: ${nangoConnectionId}`
+    );
 
-    // 2. Update the Agency Client record to link to the Nango Connection record
-    const [updatedClient] = await db
-      .update(agencyClientsTable)
-      .set({
-        nangoConnectionTableId: nangoConnectionRecord.id, // Link to the nango_connections table record
-        credentialStatus: "validated", // Update status as connection is made
-        updatedAt: new Date()
-      })
-      .where(eq(agencyClientsTable.id, agencyClientId))
-      .returning({ id: agencyClientsTable.id })
+    // NO LONGER updating agencyClientsTable here
 
-    if (!updatedClient) {
-      throw new Error(
-        `Agency client with ID ${agencyClientId} not found during Nango callback linkage.`
-      )
-    }
-
-    // Revalidate the path for the client details page to reflect the change
-    revalidatePath(`/agency/clients/${agencyClientId}`)
-    revalidatePath(`/agency/clients`) // Also revalidate the list page
+    // NO LONGER revalidating paths for a specific client
+    // Revalidate a general connections or settings path if needed later
+    // revalidatePath(`/agency/settings/connections`) // Example
 
     return {
       isSuccess: true,
-      message: "Nango connection ID stored successfully.",
-      data: undefined
-    }
+      message: "Nango connection details stored successfully.",
+      data: { nangoConnectionRecordId: newRecordId } // Return the ID of the created record
+    };
   } catch (error: any) {
-    console.error("Error storing Nango connection ID:", error)
+    console.error("Error storing Nango connection details:", error);
+    // Ensure the error message is specific
+    let message = "Failed to store Nango connection details.";
+    if (error instanceof Error) {
+        message = `${message} ${error.message}`;
+    }
     return {
       isSuccess: false,
-      message: `Failed to store Nango connection ID: ${error.message || error}`
-    }
+      message: message,
+    };
   }
 }
 

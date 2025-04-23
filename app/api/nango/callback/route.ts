@@ -115,8 +115,9 @@ export async function GET(request: NextRequest) {
     // --- Helper function for redirecting with error --- //
     const getErrorRedirectUrl = (
       errorCode: string,
-      defaultPath = "/agency/clients"
+      defaultPath = "/agency/dashboard"
     ) => {
+      // Default to dashboard
       const redirectUrl = new URL(defaultPath, request.url)
       redirectUrl.searchParams.set("error", errorCode)
       return redirectUrl
@@ -129,25 +130,21 @@ export async function GET(request: NextRequest) {
         error,
         searchParams.toString()
       )
-      // Attempt to get agencyClientId from state to redirect back to the specific client page
-      let clientSpecificPath = "/agency/clients"
+      // Attempt to get agencyId from state to redirect back to the agency dashboard
+      let agencyPath = "/agency/dashboard" // Default redirect path on error
       if (state) {
         try {
           const decodedState = JSON.parse(decodeURIComponent(state))
-          if (decodedState.agencyClientId) {
-            clientSpecificPath = `/agency/clients/${decodedState.agencyClientId}`
+          if (decodedState.agencyId) {
+            // Could potentially redirect to a specific agency settings page if needed
+            // agencyPath = `/agency/${decodedState.agencyId}/settings`
           }
         } catch (e) {
-          console.warn(
-            "Could not parse agencyClientId from state on error path."
-          )
+          console.warn("Could not parse agencyId from state on error path.")
         }
       }
       return NextResponse.redirect(
-        getErrorRedirectUrl(
-          `nango_connection_failed: ${error}`,
-          clientSpecificPath
-        )
+        getErrorRedirectUrl(`nango_connection_failed: ${error}`, agencyPath)
       )
     }
 
@@ -161,11 +158,25 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    let agencyClientId: string
+    let agencyId: string
+    let stateUserId: string // Get userId from state as well for verification
     try {
-      // Assuming state is URL-encoded JSON like {"agencyClientId": "..."}
-      agencyClientId = JSON.parse(decodeURIComponent(state)).agencyClientId
-      if (!agencyClientId) throw new Error("agencyClientId missing in state")
+      // State should contain {"agencyId": "...", "userId": "..."}
+      const decodedState = JSON.parse(decodeURIComponent(state))
+      agencyId = decodedState.agencyId
+      stateUserId = decodedState.userId
+      if (!agencyId || !stateUserId)
+        throw new Error("agencyId or userId missing in state")
+
+      // Verify the userId from the state matches the logged-in user
+      if (stateUserId !== userId) {
+        console.error(
+          `State userId (${stateUserId}) does not match logged-in userId (${userId}). Potential CSRF?`
+        )
+        return NextResponse.redirect(
+          getErrorRedirectUrl("nango_callback_user_mismatch")
+        )
+      }
     } catch (e) {
       console.error(
         "Invalid state parameter in Nango callback redirect:",
@@ -177,49 +188,50 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    // Define the success/error redirect URL base
-    const clientPageUrl = new URL(
-      `/agency/clients/${agencyClientId}`,
-      request.url
-    )
+    // Define the success/error redirect URL base - redirect to dashboard
+    const redirectBaseUrl = new URL("/agency/dashboard", request.url)
 
-    // Fetch agencyId from the user's profile
+    // No longer need to fetch agencyId from profile, it came from state and was verified
+    /*
     const userProfile = await db.query.profiles.findFirst({
       where: eq(profilesTable.userId, userId),
-      columns: { agencyId: true }
+      columns: { agencyId: true },
     })
 
     if (!userProfile?.agencyId) {
-      console.error(
-        `Could not find agencyId for user ${userId} in profile table.`
-      )
+      console.error(`Could not find agencyId for user ${userId} in profile table.`)
       clientPageUrl.searchParams.set("error", "profile_agency_not_found")
       return NextResponse.redirect(clientPageUrl)
     }
     const agencyId = userProfile.agencyId
+    */
 
-    // Call the server action to store the connection ID
+    // Call the server action to store the connection ID (no agencyClientId)
     const result = await storeNangoConnectionIdAction(
-      agencyClientId,
+      // agencyClientId removed
       connectionId,
       providerConfigKey,
-      agencyId, // Pass the fetched agencyId
-      userId // Pass the userId
+      agencyId, // Pass the agencyId from state
+      userId // Pass the logged-in userId (verified against state)
     )
 
     if (result.isSuccess) {
       console.log(
-        `Successfully stored Nango connection for client ${agencyClientId}`
+        `Successfully stored Nango connection for agency ${agencyId}, user ${userId}`
       )
-      clientPageUrl.searchParams.set("success", "nango_connected")
-      return NextResponse.redirect(clientPageUrl)
+      redirectBaseUrl.searchParams.set("success", "nango_connected")
+      // Optionally include the new connection record ID if needed on the dashboard
+      // if (result.data?.nangoConnectionRecordId) {
+      //   redirectBaseUrl.searchParams.set("newConnectionId", result.data.nangoConnectionRecordId)
+      // }
+      return NextResponse.redirect(redirectBaseUrl)
     } else {
       console.error(
-        `Failed to store Nango connection for client ${agencyClientId}:`,
+        `Failed to store Nango connection for agency ${agencyId}, user ${userId}:`,
         result.message
       )
-      clientPageUrl.searchParams.set("error", "nango_storage_failed")
-      return NextResponse.redirect(clientPageUrl)
+      redirectBaseUrl.searchParams.set("error", "nango_storage_failed")
+      return NextResponse.redirect(redirectBaseUrl)
     }
   } catch (error: any) {
     console.error("Unexpected error in Nango callback GET handler:", error)
