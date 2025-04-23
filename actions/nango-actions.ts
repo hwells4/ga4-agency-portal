@@ -3,11 +3,12 @@
 import { db } from "@/db/db"
 import { agencyClientsTable, nangoConnectionsTable } from "@/db/schema"
 import { ActionState } from "@/types"
-import { eq } from "drizzle-orm"
+import { eq, and } from "drizzle-orm"
 import { Nango } from "@nangohq/node"
 import { revalidatePath } from "next/cache"
 import { google } from "googleapis"
 import { BetaAnalyticsDataClient } from "@google-analytics/data"
+import { auth } from "@clerk/nextjs/server"
 
 // Initialize Nango client - ensure env vars are set
 const nango = new Nango({
@@ -184,48 +185,55 @@ export async function storeNangoConnectionIdAction(
 
 /**
  * Fetches the list of GA4 properties accessible by the connected account.
- * Requires a valid Nango connection to be stored first.
- * @param agencyClientId - The ID of the agency client record.
+ * Looks up connection details using the nangoConnectionId.
+ * @param nangoConnectionId - The Nango connection ID.
  */
 export async function fetchGa4PropertiesAction(
-  agencyClientId: string
+  nangoConnectionId: string
 ): Promise<ActionState<Ga4PropertySummary[]>> {
   try {
-    console.log(`Fetching GA4 properties for agency client: ${agencyClientId}`)
+    console.log(`Fetching GA4 properties for Nango connection: ${nangoConnectionId}`);
 
-    // 1. Get Nango connection details by joining AgencyClient and NangoConnection
-    // TODO: Add agencyId check here if RLS is implemented via helpers
-    const clientWithConnection = await db
-      .select({
-        nangoConnectionId: nangoConnectionsTable.nangoConnectionId,
-        nangoProviderConfigKey: nangoConnectionsTable.providerConfigKey
-      })
-      .from(agencyClientsTable)
-      .innerJoin(
-        nangoConnectionsTable,
-        eq(agencyClientsTable.nangoConnectionTableId, nangoConnectionsTable.id)
-      )
-      .where(eq(agencyClientsTable.id, agencyClientId))
-      .limit(1) // Expecting only one result
-      .then((results) => results[0]) // Get the first result or undefined
+    // --- Added auth check ---
+    const { userId, orgId: agencyId } = await auth();
+    if (!userId || !agencyId) {
+      throw new Error("User not authenticated or agency ID not found.");
+    }
+    // --- End added auth check ---
 
-    if (
-      !clientWithConnection?.nangoConnectionId ||
-      !clientWithConnection?.nangoProviderConfigKey
-    ) {
-      throw new Error(
-        "Nango connection details not found or incomplete for this client."
-      )
+    // 1. Get Nango connection details from DB using nangoConnectionId
+    const connectionRecord = await db.query.nangoConnections.findFirst({
+      where: and(
+        eq(nangoConnectionsTable.nangoConnectionId, nangoConnectionId),
+        eq(nangoConnectionsTable.agencyId, agencyId) // Ensure ownership
+      ),
+      columns: {
+        nangoConnectionId: true, // Keep nangoConnectionId for clarity/use below
+        providerConfigKey: true,
+        status: true,
+      },
+    });
+
+    if (!connectionRecord) {
+        throw new Error(`Nango connection record not found for ID: ${nangoConnectionId} belonging to agency ${agencyId}.`);
     }
 
-    const { nangoConnectionId, nangoProviderConfigKey } = clientWithConnection
+    if (connectionRecord.status !== 'active') {
+        throw new Error(`Nango connection ${nangoConnectionId} is not active (status: ${connectionRecord.status}). Cannot fetch properties.`);
+    }
+
+    if (!connectionRecord.providerConfigKey) {
+         throw new Error(`Provider config key not found for Nango connection ${nangoConnectionId}.`);
+    }
+
+    const { providerConfigKey } = connectionRecord;
 
     // 2. Fetch fresh access token from Nango
-    console.log(`Fetching Nango token for connection: ${nangoConnectionId}`)
+    console.log(`Fetching Nango token for connection: ${nangoConnectionId}`);
     const connection = await nango.getConnection(
-      nangoProviderConfigKey,
-      nangoConnectionId
-    )
+      providerConfigKey,
+      nangoConnectionId // Use the verified nangoConnectionId
+    );
 
     // Type guard to ensure we have OAuth2 credentials
     if (connection.credentials.type !== 'OAUTH2') {
@@ -251,8 +259,6 @@ export async function fetchGa4PropertiesAction(
     })
 
     // 5. List Account Summaries to find accessible properties
-    // We list summaries as it's often the most direct way to get properties
-    // a user has access to, even across multiple accounts.
     console.log("Listing GA Account Summaries using Admin API...")
     const accountSummaries = await adminClient.accountSummaries.list()
 
@@ -279,16 +285,18 @@ export async function fetchGa4PropertiesAction(
       message: "Successfully fetched GA4 properties.",
       data: properties
     }
+
   } catch (error: any) {
-    console.error("Error fetching GA4 properties:", error)
-    // Check for specific Google API errors if needed
-    let message = `Failed to fetch GA4 properties: ${error.message || error}`;
+    console.error(`Error fetching GA4 properties for Nango connection ${nangoConnectionId}:`, error);
+     let message = `Failed to fetch GA4 properties: ${error.message || error}`;
     if (error.code === 403) {
         message = "Permission denied. Ensure the connection has the 'analytics.readonly' scope and the Admin API is enabled.";
+    } else if (error.message?.includes("not found")) {
+        message = `Nango connection ${nangoConnectionId} not found or access denied.`;
     }
     return {
       isSuccess: false,
-      message: message
-    }
+      message: message,
+    };
   }
 } 

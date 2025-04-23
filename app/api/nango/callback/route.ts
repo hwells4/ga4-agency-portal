@@ -9,12 +9,12 @@ import { eq } from "drizzle-orm" // Import eq
 // Nango sends webhooks via POST with a JSON body
 
 export async function POST(request: NextRequest) {
-  // Changed from GET to POST
   try {
-    // Nango sends webhook data in the request body
     const webhookData = await request.json()
-
-    console.log("Nango Callback Webhook Received (POST):", webhookData)
+    console.log(
+      "Nango Callback Webhook Received (POST):",
+      JSON.stringify(webhookData, null, 2)
+    )
 
     // Verify webhook type and success (optional but recommended)
     if (
@@ -23,47 +23,49 @@ export async function POST(request: NextRequest) {
       webhookData?.success !== true
     ) {
       console.warn(
-        "Received non-successful or unexpected Nango webhook:",
+        "Received non-successful or unexpected Nango webhook type/operation:",
         webhookData
       )
       // Return 200 OK even for non-successful webhooks Nango expects it
       return NextResponse.json({
-        message: "Webhook received but not processed."
+        message:
+          "Webhook received but not processed (type/op/success mismatch)."
       })
     }
 
-    // Extract needed data
+    // Extract needed data from webhook payload
     const nangoConnectionId = webhookData?.connectionId
-    const agencyClientId = webhookData?.endUser?.endUserId // Nango uses endUserId, which we map to agencyClientId
-    const error = webhookData?.error // Check if Nango reported an error
+    const providerConfigKey = webhookData?.providerConfigKey
+    const userId = webhookData?.endUser?.endUserId // Nango uses endUserId for the user
+    const agencyId = webhookData?.endUser?.organizationId // Nango uses organizationId for the org
+    const error = webhookData?.error
 
     if (error) {
       console.error("Nango webhook reported an error:", error)
-      // Even with an error reported by Nango, respond 200 OK
+      // TODO: Potentially update nango_connections table with error status?
       return NextResponse.json({ message: "Webhook error received." })
     }
 
-    if (!nangoConnectionId || !agencyClientId) {
+    // Validate required fields from webhook
+    if (!nangoConnectionId || !providerConfigKey || !userId || !agencyId) {
       console.error(
-        "Nango webhook missing required parameters (connectionId or endUser.endUserId).",
+        "Nango webhook missing required parameters (connectionId, providerConfigKey, endUserId, or organizationId).",
         webhookData
       )
-      // Respond 200 OK but log the error
       return NextResponse.json({ message: "Webhook data incomplete." })
     }
 
-    // Call the server action to store the Nango connection ID in the database
-    /* // Temporarily commented out - needs providerConfigKey, agencyId, userId
-    const result = await storeNangoConnectionIdAction(
-      agencyClientId,
-      nangoConnectionId
+    // Call the server action to store the Nango connection details
+    // Use the data extracted from the webhook payload
+    console.log(
+      `Calling storeNangoConnectionIdAction from POST webhook for user ${userId}, agency ${agencyId}...`
     )
-    */
-    // Placeholder logic until POST handler is fully updated or removed
-    const result = {
-      isSuccess: true,
-      message: "Webhook received, DB update skipped for now."
-    } // Assume success for now
+    const result = await storeNangoConnectionIdAction(
+      nangoConnectionId,
+      providerConfigKey,
+      agencyId,
+      userId
+    )
 
     if (!result.isSuccess) {
       // Log the failure but still return 200 OK to Nango
@@ -76,7 +78,7 @@ export async function POST(request: NextRequest) {
     }
 
     console.log(
-      `Successfully stored Nango connection ID ${nangoConnectionId} for agency client ${agencyClientId} via webhook.`
+      `Successfully stored Nango connection ID ${nangoConnectionId} for agency client ${agencyId} via webhook.`
     )
 
     // Return 200 OK to acknowledge webhook receipt to Nango
