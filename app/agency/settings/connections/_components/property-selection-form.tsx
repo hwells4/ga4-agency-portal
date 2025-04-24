@@ -177,25 +177,82 @@ export default function PropertySelectionForm({
       }))
 
     try {
-      const result = await bulkCreateAgencyClientsAction(
+      // Ensure agencyId is not empty or undefined
+      if (!agencyId) {
+        throw new Error("Agency ID is required but not available")
+      }
+
+      // Log the values being sent to the action for debugging
+      console.log("Submitting to bulkCreateAgencyClientsAction with:", {
         agencyId,
         nangoConnectionTableId,
-        propertiesToImport
-      )
+        propertyCount: propertiesToImport.length
+      })
 
-      if (result.isSuccess) {
-        toast({
-          title: "Success",
-          description: result.message
-        })
-        if (onSuccess) {
-          onSuccess(result.data) // Pass created clients data back
+      try {
+        const result = await bulkCreateAgencyClientsAction(
+          agencyId,
+          nangoConnectionTableId,
+          propertiesToImport
+        )
+
+        if (result.isSuccess) {
+          toast({
+            title: "Success",
+            description: result.message
+          })
+          if (onSuccess) {
+            onSuccess(result.data) // Pass created clients data back
+          }
+        } else {
+          // Enhanced error logging for auth-related errors
+          if (
+            result.message.includes("Authentication") ||
+            result.message.includes("Unauthorized")
+          ) {
+            console.error(
+              "Authentication error during bulk create:",
+              result.message
+            )
+            setGlobalError(
+              `Authentication error: ${result.message}. You may need to refresh the page and try again.`
+            )
+          } else {
+            setGlobalError(result.message) // Show regular error message from the action
+          }
+
+          toast({
+            title: "Error",
+            description: result.message,
+            variant: "destructive"
+          })
         }
-      } else {
-        setGlobalError(result.message) // Show error message from the action
+      } catch (actionError: any) {
+        // Specific handling for fetch errors that might indicate auth issues
+        console.error(
+          "Error calling bulkCreateAgencyClientsAction:",
+          actionError
+        )
+        const errorMessage =
+          actionError.message || "An error occurred during the save operation"
+
+        // Check for fetch/network related errors that could indicate auth issues
+        if (
+          errorMessage.includes("fetch") ||
+          errorMessage.includes("network") ||
+          errorMessage.includes("401") ||
+          errorMessage.includes("auth")
+        ) {
+          setGlobalError(
+            `Network or authentication error: ${errorMessage}. Try refreshing the page.`
+          )
+        } else {
+          setGlobalError(`Error: ${errorMessage}`)
+        }
+
         toast({
-          title: "Error",
-          description: result.message,
+          title: "Action Error",
+          description: errorMessage,
           variant: "destructive"
         })
       }

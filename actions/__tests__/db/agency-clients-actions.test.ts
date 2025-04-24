@@ -27,22 +27,26 @@ import { eq } from "drizzle-orm"
 
 // --- Test Setup ---
 
-// Real Clerk User IDs provided by user
-const USER_A_ID = "user_2vyrgCUhbrEWtju2x2ewANSDiHv"
-const USER_B_ID = "user_2vyrigSIaJkvfros8cKrhmLcr3j"
-const USER_C_ID = "user_c_clerk_id_no_agency" // Placeholder for a user without an agency
+// Test User IDs
+const USER_A_ID = "user_2fKXYZ" // Corresponds to Agency A
+const USER_B_ID = "user_3gLYZA" // Corresponds to Agency B
+const USER_C_ID = "user_4hMZAB" // No associated agency
 
-// Placeholder IDs - These should be generated/managed by your seeding logic
-// Using simple strings for now, replace with actual UUIDs if needed
-const AGENCY_A_ID = "test-agency-a-id"
-const AGENCY_B_ID = "test-agency-b-id"
+// Test Agency IDs
+const AGENCY_A_ID = "agency_aaa"
+const AGENCY_B_ID = "agency_bbb"
 
-// Replace string IDs with valid UUIDs
-const CLIENT_A1_ID = "11111111-1111-4111-a111-111111111111"
-const CLIENT_A2_ID = "22222222-2222-4222-a222-222222222222"
-const CLIENT_B1_ID = "bbbbbbbb-bbbb-4bbb-abbb-bbbbbbbbbbbb"
-// Add a valid UUID format for the non-existent ID tests
-const NON_EXISTENT_CLIENT_ID = "00000000-0000-0000-0000-000000000000"; 
+// Test Client IDs
+const CLIENT_A1_ID = "client_a1a1a1"
+const CLIENT_A2_ID = "client_a2a2a2"
+const CLIENT_B1_ID = "client_b1b1b1"
+const NON_EXISTENT_CLIENT_ID = "00000000-0000-0000-0000-000000000000" // Valid UUID format
+
+// Test Nango Connection Table IDs
+const NANGO_CONN_A1_ID = "nangoconn_a1a1a1"
+const NANGO_CONN_A2_ID = "nangoconn_a2a2a2"
+const NANGO_CONN_B1_ID = "nangoconn_b1b1b1"
+const NANGO_CONN_NEW_ID = "nangoconn_newnew"
 
 // --- Mocking Clerk Auth --- 
 const mockAuthFn = vi.fn(() => ({ userId: null as string | null }));
@@ -166,56 +170,98 @@ async function disconnectTestDb(db: PostgresJsDatabase<typeof schema>) {
 }
 
 // Seeds data into the provided test database instance
-async function seedTestData(db: PostgresJsDatabase<typeof schema>) { 
+async function seedTestData(db: PostgresJsDatabase<typeof schema>) {
   console.log("Seeding test data...")
   if (!db) throw new Error("Test DB not connected for seeding")
 
   try {
-    // Seed Agency A linked to User A
-    await db.insert(schema.agenciesTable).values({
-      id: AGENCY_A_ID,
-      userId: USER_A_ID,
-      name: "Agency A",
-      // Add other required agency fields
-    }).onConflictDoNothing() // Prevent errors if run multiple times
+    // 1. Seed Agencies
+    await db.insert(schema.agenciesTable).values([
+      {
+        id: AGENCY_A_ID,
+        userId: USER_A_ID,
+        name: "Agency A"
+      },
+      {
+        id: AGENCY_B_ID,
+        userId: USER_B_ID,
+        name: "Agency B"
+      }
+    ]).onConflictDoNothing()
 
-    // Seed Agency B linked to User B
-    await db.insert(schema.agenciesTable).values({
-      id: AGENCY_B_ID,
-      userId: USER_B_ID,
-      name: "Agency B",
-      // Add other required agency fields
-    }).onConflictDoNothing()
+    // 2. Seed Profiles (referencing agencies)
+    await db.insert(schema.profilesTable).values([
+      {
+        userId: USER_A_ID,
+        agencyId: AGENCY_A_ID
+      },
+      {
+        userId: USER_B_ID,
+        agencyId: AGENCY_B_ID
+      },
+      {
+        userId: USER_C_ID // User C has no agency linked
+      }
+    ]).onConflictDoNothing()
 
-    // Seed Client A1 for Agency A
-    await db.insert(schema.agencyClientsTable).values({
-      id: CLIENT_A1_ID,
-      agencyId: AGENCY_A_ID,
-      clientIdentifier: "client-a1",
-      clientName: "Client A1 Name",
-      ga4PropertyId: "prop-a1",
-      credentialStatus: "pending"
-    }).onConflictDoNothing()
+    // 3. Seed Nango Connections (referencing agencies and users/profiles)
+    await db.insert(schema.nangoConnectionsTable).values([
+      {
+        id: NANGO_CONN_A1_ID,
+        userId: USER_A_ID,
+        agencyId: AGENCY_A_ID,
+        nangoConnectionId: "nango_conn_a1_ext",
+        nangoIntegrationId: "google-analytics-4",
+        providerConfigKey: "google-analytics-4"
+      },
+      {
+        id: NANGO_CONN_A2_ID,
+        userId: USER_A_ID,
+        agencyId: AGENCY_A_ID,
+        nangoConnectionId: "nango_conn_a2_ext",
+        nangoIntegrationId: "google-analytics-4",
+        providerConfigKey: "google-analytics-4"
+      },
+      {
+        id: NANGO_CONN_B1_ID,
+        userId: USER_B_ID,
+        agencyId: AGENCY_B_ID,
+        nangoConnectionId: "nango_conn_b1_ext",
+        nangoIntegrationId: "google-analytics-4",
+        providerConfigKey: "google-analytics-4"
+      }
+    ]).onConflictDoNothing()
 
-    // Seed Client A2 for Agency A
-    await db.insert(schema.agencyClientsTable).values({
-      id: CLIENT_A2_ID,
-      agencyId: AGENCY_A_ID,
-      clientIdentifier: "client-a2",
-      clientName: "Client A2 Name",
-      ga4PropertyId: "prop-a2",
-      credentialStatus: "pending"
-    }).onConflictDoNothing()
-
-    // Seed Client B1 for Agency B
-    await db.insert(schema.agencyClientsTable).values({
-      id: CLIENT_B1_ID,
-      agencyId: AGENCY_B_ID,
-      clientIdentifier: "client-b1",
-      clientName: "Client B1 Name",
-      ga4PropertyId: "prop-b1",
-      credentialStatus: "pending"
-    }).onConflictDoNothing()
+    // 4. Seed Agency Clients (referencing agencies and nango connections)
+    await db.insert(schema.agencyClientsTable).values([
+      {
+        id: CLIENT_A1_ID,
+        agencyId: AGENCY_A_ID,
+        clientIdentifier: "client-a1",
+        clientName: "Client A1 Name",
+        propertyId: "prop-a1",
+        nangoConnectionTableId: NANGO_CONN_A1_ID,
+        credentialStatus: "pending"
+      },
+      {
+        id: CLIENT_A2_ID,
+        agencyId: AGENCY_A_ID,
+        clientIdentifier: "client-a2",
+        clientName: "Client A2 Name",
+        propertyId: "prop-a2",
+        nangoConnectionTableId: NANGO_CONN_A2_ID,
+        credentialStatus: "pending"
+      },
+      {
+        id: CLIENT_B1_ID,
+        agencyId: AGENCY_B_ID,
+        clientIdentifier: "client-b1",
+        clientName: "Client B1 Name",
+        propertyId: "prop-b1",
+        nangoConnectionTableId: NANGO_CONN_B1_ID,
+        credentialStatus: "pending"
+      }
+    ]).onConflictDoNothing()
 
     console.log("Test data seeded.")
   } catch (error) {
@@ -225,17 +271,19 @@ async function seedTestData(db: PostgresJsDatabase<typeof schema>) {
 }
 
 // Cleans up data from the provided test database instance
-async function cleanupTestData(db: PostgresJsDatabase<typeof schema>) { 
+async function cleanupTestData(db: PostgresJsDatabase<typeof schema>) {
   console.log("Cleaning up test data...")
-   if (!db) throw new Error("Test DB not connected for cleanup")
+  if (!db) throw new Error("Test DB not connected for cleanup")
   try {
-    // Delete in reverse order of creation due to potential FK constraints
+    // Delete in reverse order of FK dependencies
     await db.delete(schema.agencyClientsTable)
+    await db.delete(schema.nangoConnectionsTable)
     await db.delete(schema.agenciesTable)
+    await db.delete(schema.profilesTable) // Delete profiles last
     console.log("Test data cleaned up.")
   } catch (error) {
-      console.error("Error cleaning up test data:", error)
-      throw error
+    console.error("Error cleaning up test data:", error)
+    throw error
   }
 }
 
@@ -329,7 +377,8 @@ describe("Agency Client Server Actions RLS Tests", () => {
     const newClientData: Omit<InsertAgencyClient, "agencyId" | "id" | "createdAt" | "updatedAt"> = {
       clientIdentifier: "new-client-test",
       clientName: "New Test Client",
-      ga4PropertyId: "123456789",
+      propertyId: "123456789",
+      nangoConnectionTableId: NANGO_CONN_A1_ID, // Added Nango connection ID for testing
       // Add other required fields as needed
     }
 

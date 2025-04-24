@@ -33,49 +33,72 @@ interface Ga4PropertySummary {
  */
 export const getNangoConnectionByPublicIdAction = async (
     publicConnectionId: string
-  ): Promise<ActionState<{ nangoConnectionTableId: string; status: string }>> =>
-    withRLSRead(async (tx: any) => {
-      // RLS policy automatically filters by agencyId/userId set in context
-      try {
-        if (!publicConnectionId) {
-            return { isSuccess: false, message: "Nango Public Connection ID is required." };
-        }
-
-        console.log(`Querying internal DB for Nango public connection ID: ${publicConnectionId} within RLS context.`);
-
-        // Query using the public ID, RLS provides the necessary ownership check
-        const connectionRecord = await tx.query.nangoConnections.findFirst({
-          where: eq(nangoConnectionsTable.nangoConnectionId, publicConnectionId),
-          columns: {
-            id: true, // This is our internal nangoConnectionTableId
-            status: true
-          }
-        });
-  
-        if (!connectionRecord) {
-          // Record might not exist yet if callback is slow, or RLS prevented access
-          console.warn(`Internal record for Nango public ID ${publicConnectionId} not found within RLS context.`);
-          return {
-            isSuccess: false,
-            message: `Connection record not found. It might still be processing, or access is denied. Please wait a moment and try again if the connection was successful.`, // User-friendly message
-          };
-        }
-
-        console.log(`Found internal record ID: ${connectionRecord.id} with status: ${connectionRecord.status} for public ID: ${publicConnectionId}`);
-  
-        return {
-          isSuccess: true,
-          message: "Connection record retrieved successfully.",
-          data: { 
-              nangoConnectionTableId: connectionRecord.id, 
-              status: connectionRecord.status 
-            },
+  ): Promise<ActionState<{ nangoConnectionTableId: string; status: string }>> => {
+    try {
+      // Attempt to get auth context directly before using withRLSRead
+      console.log(`[Auth Debug] About to call auth() directly before withRLSRead`);
+      const { userId, orgId } = await auth();
+      console.log(`[Auth Debug] Direct auth() result: userId=${userId}, orgId=${orgId}`);
+      
+      if (!userId) {
+        console.error(`[Auth Debug] Direct auth check failed - no userId available`);
+        return { 
+          isSuccess: false, 
+          message: "Authentication error: No user context available. Please ensure you're logged in." 
         };
-      } catch (error: any) {
-        console.error(`Error retrieving internal Nango connection record for public ID ${publicConnectionId}:`, error);
-        return { isSuccess: false, message: `Failed to retrieve connection record: ${error.message || 'Unknown error'}` };
       }
-    });
+      
+      // Continue with RLS read if auth succeeds
+      return withRLSRead(async (tx: any) => {
+        // RLS policy automatically filters by agencyId/userId set in context
+        try {
+          if (!publicConnectionId) {
+              return { isSuccess: false, message: "Nango Public Connection ID is required." };
+          }
+
+          console.log(`Querying internal DB for Nango public connection ID: ${publicConnectionId} within RLS context.`);
+
+          // Query using the public ID, RLS provides the necessary ownership check
+          const connectionRecord = await tx.query.nangoConnections.findFirst({
+            where: eq(nangoConnectionsTable.nangoConnectionId, publicConnectionId),
+            columns: {
+              id: true, // This is our internal nangoConnectionTableId
+              status: true
+            }
+          });
+    
+          if (!connectionRecord) {
+            // Record might not exist yet if callback is slow, or RLS prevented access
+            console.warn(`Internal record for Nango public ID ${publicConnectionId} not found within RLS context.`);
+            return {
+              isSuccess: false,
+              message: `Connection record not found. It might still be processing, or access is denied. Please wait a moment and try again if the connection was successful.`, // User-friendly message
+            };
+          }
+
+          console.log(`Found internal record ID: ${connectionRecord.id} with status: ${connectionRecord.status} for public ID: ${publicConnectionId}`);
+    
+          return {
+            isSuccess: true,
+            message: "Connection record retrieved successfully.",
+            data: { 
+                nangoConnectionTableId: connectionRecord.id, 
+                status: connectionRecord.status 
+              },
+          };
+        } catch (error: any) {
+          console.error(`Error retrieving internal Nango connection record for public ID ${publicConnectionId}:`, error);
+          return { isSuccess: false, message: `Failed to retrieve connection record: ${error.message || 'Unknown error'}` };
+        }
+      });
+    } catch (authError: any) {
+      console.error(`[Auth Debug] Error during direct auth() check:`, authError);
+      return { 
+        isSuccess: false, 
+        message: `Authentication error: ${authError.message || "Unknown auth error"}` 
+      };
+    }
+  };
 
 /**
  * Initiates the Nango connection session for an agency.

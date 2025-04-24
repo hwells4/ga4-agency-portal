@@ -151,96 +151,124 @@ export const bulkCreateAgencyClientsAction = async (
   agencyId: string, // Expect agencyId parameter
   nangoConnectionTableId: string,
   propertiesToImport: PropertyToImport[]
-): Promise<ActionState<SelectAgencyClient[]>> =>
-  // Pass agencyId as the second argument to withRLS
-  withRLS(async (tx: any, resolvedAgencyId, clerkUserId) => {
-    // Note: resolvedAgencyId inside here *should* match the passed agencyId
-    // because withRLS now prioritizes it.
+): Promise<ActionState<SelectAgencyClient[]>> => {
+  try {
+    // Log important values before calling withRLS
+    console.log(`[Bulk Create Debug] About to call bulkCreateAgencyClientsAction with agencyId=${agencyId}`);
+    console.log(`[Bulk Create Debug] Attempting direct auth check for debugging`);
+    const { userId, orgId } = await auth();
+    console.log(`[Bulk Create Debug] Direct auth result: userId=${userId}, orgId=${orgId}`);
 
-    // We already validated the passed agencyId is non-empty
-    // if (!agencyId) { // This check is redundant now if passed
-    //     return { isSuccess: false, message: "Agency ID was not provided to the action." };
-    // }
-
-    if (!nangoConnectionTableId || !propertiesToImport?.length) {
-      return { isSuccess: false, message: "Invalid input provided." };
+    // Validate that we have minimum required data before even trying RLS operations
+    if (!agencyId) {
+      console.error(`[Bulk Create Debug] No agencyId provided!`);
+      return { isSuccess: false, message: "Agency ID is required but was not provided." };
     }
 
-    const clientsToInsert: InsertAgencyClient[] = propertiesToImport.map(
-      prop => ({
-        agencyId: resolvedAgencyId, // Use the agencyId resolved by withRLS for insertion
-        clientIdentifier: prop.clientIdentifier,
-        clientName: prop.clientName,
-        propertyId: prop.propertyId,
-        nangoConnectionTableId: nangoConnectionTableId,
-        credentialStatus: "pending",
-      })
-    );
+    if (!userId) {
+      console.error(`[Bulk Create Debug] Auth failed! No user context available.`);
+      return { isSuccess: false, message: "Authentication error: You must be logged in." };
+    }
 
-    try {
-      const identifiersToCheck = clientsToInsert.map(c => c.clientIdentifier);
+    // Proceed with RLS operation
+    return withRLS(async (tx: any, resolvedAgencyId, clerkUserId) => {
+      console.log(`[Bulk Create Debug] Inside withRLS: resolvedAgencyId=${resolvedAgencyId}, clerkUserId=${clerkUserId}`);
+      
+      // Validate input data
+      if (!resolvedAgencyId) {
+        return { 
+          isSuccess: false, 
+          message: "Agency ID is required but was not available in the authentication context." 
+        };
+      }
 
-      if (identifiersToCheck.length > 0) {
-        // Duplicate check STILL relies on RLS context set by withRLS using contextAgencyId
-        // This check might incorrectly pass if contextAgencyId is wrong/null, but the
-        // subsequent INSERT should fail safely due to DB constraints / RLS policy IF they exist.
-        const existingIdentifiers = await tx
-          .select({ clientIdentifier: agencyClientsTable.clientIdentifier })
-          .from(agencyClientsTable)
-          .where(inArray(agencyClientsTable.clientIdentifier, identifiersToCheck));
+      if (!nangoConnectionTableId || !propertiesToImport?.length) {
+        return { isSuccess: false, message: "Invalid input provided." };
+      }
 
-        if (existingIdentifiers.length > 0) {
-          const duplicates = existingIdentifiers.map((e: any) => e.clientIdentifier);
+      const clientsToInsert: InsertAgencyClient[] = propertiesToImport.map(
+        prop => ({
+          agencyId: resolvedAgencyId, // Use the agencyId resolved by withRLS for insertion
+          clientIdentifier: prop.clientIdentifier,
+          clientName: prop.clientName,
+          propertyId: prop.propertyId,
+          nangoConnectionTableId: nangoConnectionTableId,
+          credentialStatus: "pending",
+        })
+      );
+
+      try {
+        const identifiersToCheck = clientsToInsert.map(c => c.clientIdentifier);
+
+        if (identifiersToCheck.length > 0) {
+          // Duplicate check STILL relies on RLS context set by withRLS using contextAgencyId
+          // This check might incorrectly pass if contextAgencyId is wrong/null, but the
+          // subsequent INSERT should fail safely due to DB constraints / RLS policy IF they exist.
+          const existingIdentifiers = await tx
+            .select({ clientIdentifier: agencyClientsTable.clientIdentifier })
+            .from(agencyClientsTable)
+            .where(inArray(agencyClientsTable.clientIdentifier, identifiersToCheck));
+
+          if (existingIdentifiers.length > 0) {
+            const duplicates = existingIdentifiers.map((e: any) => e.clientIdentifier);
+            return {
+              isSuccess: false,
+              // Use the passed agencyId for the error message for clarity
+              message: `Failed to create clients. The following Client Identifiers already exist for agency ${resolvedAgencyId}: ${duplicates.join(", ")}`
+            };
+          }
+        }
+
+        // Perform the bulk insert using the transaction client 'tx'
+        // The actual DB insert will use the RLS context set by withRLS(contextAgencyId,...)
+        // but the agencyId value in the inserted data comes from the passed parameter.
+        const insertedClients = await tx
+          .insert(agencyClientsTable)
+          .values(clientsToInsert) // Uses passed agencyId here
+          .returning();
+
+        if (!insertedClients || insertedClients.length !== clientsToInsert.length) {
+          // This case might indicate a partial insert or unexpected DB behavior
+          console.error("Bulk insert mismatch:", {
+            expected: clientsToInsert.length,
+            inserted: insertedClients?.length ?? 0
+          });
           return {
             isSuccess: false,
-            // Use the passed agencyId for the error message for clarity
-            message: `Failed to create clients. The following Client Identifiers already exist for agency ${resolvedAgencyId}: ${duplicates.join(", ")}`
+            message:
+              "Failed to create all selected clients. Please check and try again."
           };
         }
-      }
 
-      // Perform the bulk insert using the transaction client 'tx'
-      // The actual DB insert will use the RLS context set by withRLS(contextAgencyId,...)
-      // but the agencyId value in the inserted data comes from the passed parameter.
-      const insertedClients = await tx
-        .insert(agencyClientsTable)
-        .values(clientsToInsert) // Uses passed agencyId here
-        .returning();
-
-      if (!insertedClients || insertedClients.length !== clientsToInsert.length) {
-        // This case might indicate a partial insert or unexpected DB behavior
-        console.error("Bulk insert mismatch:", {
-          expected: clientsToInsert.length,
-          inserted: insertedClients?.length ?? 0
-        });
+        revalidatePath("/agency/clients");
         return {
-          isSuccess: false,
-          message:
-            "Failed to create all selected clients. Please check and try again."
+            isSuccess: true,
+            message: `Successfully created ${insertedClients.length} client configuration(s).`,
+            data: insertedClients
         };
+
+      } catch (error: any) {
+          console.error("Error creating bulk agency clients:", error);
+          if (error.code === "23505") {
+              return {
+                  isSuccess: false,
+                  message: `Failed to create clients due to a conflict. Ensure Property IDs and Client Identifiers are unique within your agency.`
+              };
+          }
+          return {
+              isSuccess: false,
+              message: `An unexpected error occurred: ${error.message || "Unknown error"}`
+          };
       }
-
-      revalidatePath("/agency/clients");
-      return {
-          isSuccess: true,
-          message: `Successfully created ${insertedClients.length} client configuration(s).`,
-          data: insertedClients
-      };
-
-    } catch (error: any) {
-        console.error("Error creating bulk agency clients:", error);
-        if (error.code === "23505") {
-            return {
-                isSuccess: false,
-                message: `Failed to create clients due to a conflict. Ensure Property IDs and Client Identifiers are unique within your agency.`
-            };
-        }
-        return {
-            isSuccess: false,
-            message: `An unexpected error occurred: ${error.message || "Unknown error"}`
-        };
-    }
-  }, agencyId); // Pass the explicit agencyId here!
+    }, agencyId); // Pass the explicit agencyId here!
+  } catch (authError: any) {
+    console.error(`[Bulk Create Debug] Error during direct auth() check:`, authError);
+    return { 
+      isSuccess: false, 
+      message: `Authentication error: ${authError.message || "Unknown auth error"}` 
+    };
+  }
+};
 
 // Placeholder for other agency client actions (CRUD for individual clients if needed)
 // export async function getAgencyClientAction(...) {}

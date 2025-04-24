@@ -13,6 +13,8 @@ import { useToast } from "@/components/ui/use-toast"
 import PropertySelectionForm from "./property-selection-form"
 import { SelectAgencyClient } from "@/db/schema"
 import { ActionState } from "@/types"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import { Terminal } from "lucide-react"
 
 interface ConnectNangoButtonProps {
   agencyId: string
@@ -159,6 +161,18 @@ export default function ConnectNangoButton({
                     internalIdResult = await getNangoConnectionByPublicIdAction(
                       nangoPublicConnectionId
                     )
+
+                    // If there's a 401 error despite the action call appearing to succeed,
+                    // log a detailed error message to help diagnose
+                    if (
+                      !internalIdResult.isSuccess &&
+                      internalIdResult.message.includes("Authentication")
+                    ) {
+                      console.error(
+                        `Authentication error during attempt ${attempt}:`,
+                        internalIdResult.message
+                      )
+                    }
                   } catch (internalIdError: any) {
                     console.error(
                       `Attempt ${attempt}: Error calling getNangoConnectionByPublicIdAction:`,
