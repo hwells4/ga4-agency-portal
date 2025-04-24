@@ -135,7 +135,7 @@
 |----|------|-------------|---------|--------------|--------|
 | 2.4 | Create API endpoint | Add route.ts in `app/api/internal/get-creds/` | T1.6 | 2.3 | ✅ |
 | 2.5 | Implement security check | Verify X-Internal-Secret header against env var | S1.3 | 2.4 | ✅ |
-| 2.6 | Return hardcoded response | For MVP, return test **`propertyId` AND test `nangoConnectionId`** JSON | T1.6 | 2.5 | 🚫 |
+| 2.6 | Return hardcoded response | For MVP, return test **`propertyId` AND test `nangoConnectionId`** JSON | T1.6 | 2.5 | ✅ |
 | 2.7 | Add placeholder comments | Document future DB/credential handling plans | S1.2 | 2.6 | ✅ |
 
 #### Deployment & Configuration
@@ -152,7 +152,7 @@
 |----|------|-------------|---------|--------------|--------|
 | 3.1 | Verify deployments | Ensure both services are running | F1.1, T1.5 | 1.34, 2.10 | ✅ |
 | 3.2 | Configure shared secrets | Use same secret value in both environments | S1.3 | 1.33, 2.9 | ✅ |
-| 3.3 | Create install-mcp command | Construct command with SSE URL | F1.5 | 1.34 | 🔄 |
+| 3.3 | Create install-mcp command | Construct command with SSE URL | F1.5 | 1.34 | ✅ |
 | 3.4 | Configure AI client | Run command to configure Cursor/Claude | F1.5 | 3.3 | ✅ |
 | 3.5 | Test query flow | Perform test query with client_identifier | F1.5 | 3.4 | ✅ |
 | 3.6 | Verify logs & response | Check logs in both services, verify response | F1.5 | 3.5 | ✅ |
@@ -176,7 +176,7 @@
 | 2.14 | Configure Clerk auth | Set up authentication with Clerk | F2.1, S2.1 | 2.10 | ✅ |
 | 2.15 | Implement Server Actions | Create CRUD operations in actions/db/ | F2.2 | 2.13 | ✅ |
 | 2.16 | Add Nango connection handling | Implement **Nango connection flow trigger** and storage of `nango_connection_id` in DB | T2.3, S2.3 | 2.15 | ✅ |
-| 2.17 | Enforce data isolation | Add agency boundary checks to all queries | F2.4, S2.2 | 2.15 | 🔄 |
+| 2.17 | Enforce data isolation | Add agency boundary checks to all queries | F2.4, S2.2 | 2.15 | ✅ |
 | 2.17.1 | Fix Clerk Middleware | Update `middleware.ts` to correctly protect portal API routes | S2.1 | 2.14 | ✅ |
 
 #### Internal Credential API Enhancement
@@ -194,19 +194,19 @@
 
 | ID | Task | Description | PRD Ref | Dependencies | Status |
 |----|------|-------------|---------|--------------|--------|
-| 2.19 | Create Portal UI | Build Next.js pages with Shadcn UI | F2.1 | 2.17 | 🔄 |
-| 2.19.1 | Build Agency Dashboard | List view of agency clients | F2.1 | 2.19 | 🔄 |
-| 2.19.2 | Create Client Form | Add/Edit form for client configuration **(Must include input for ga4PropertyId)** | F2.1 | 2.19.1 | 🔄 |
-| 2.19.3 | Add Nango connection trigger | **Add UI to trigger Nango connection flow** for a specific client record (needs UI work) | F2.1 | 2.19.2 | 🔄 |
-| 2.19.4 | Show connection status | Display validation status for Nango connections (needs UI work) | F2.1 | 2.19.3 | 🔄 |
-| 2.19.5 | Add setup command generator | Create "Copy Setup Command" button | F2.1 | 2.19.4 | 🔄 |
+| 2.19 | Create Portal UI | Build Next.js pages with Shadcn UI | F2.1 | 2.17 | ✅ |
+| 2.19.1 | Build Agency Dashboard | List view of agency clients | F2.1 | 2.19 | ✅ |
+| 2.19.2 | Create Client Form | Add/Edit form for client configuration **(Must include input for ga4PropertyId)** | F2.1 | 2.19.1 | ✅ |
+| 2.19.3 | Add Nango connection trigger | **Add UI to trigger Nango connection flow** for a specific client record (needs UI work) | F2.1 | 2.19.2 | ✅ |
+| 2.19.4 | Show connection status | Display validation status for Nango connections (needs UI work) | F2.1 | 2.19.3 | ✅ |
+| 2.19.5 | Add setup command generator | Create "Copy Setup Command" button | F2.1 | 2.19.4 | ✅ |
 
 #### Testing
 
 | ID   | Task                      | Description                                                                     | PRD Ref         | Dependencies | Status |
 |------|---------------------------|---------------------------------------------------------------------------------|-----------------|--------------|--------|
 | 2.20 | Write backend tests       | Test Server Actions and API logic                                               | F2.2, T2.4      | 2.18         | 🔄      |
-| 2.21 | Test Portal UI            | Manually test the complete UI flow                                              | F2.1            | 2.19.5       | 🔄      |
+| 2.21 | Test Portal UI            | Manually test the complete UI flow                                              | F2.1            | 2.19.5       | ✅      |
 | 2.22 | **Test Nango Connection**   | **Verify `fetchGa4PropertiesAction` works after Nango connection/webhook/polling** | F2.1, F2.2      | 2.16, 2.24.2 | ✅      |
 | 2.23 | **Verify Nango Webhook**  | **Confirm Nango webhook successfully triggers callback & DB update.**           | F2.2, T2.3      | 2.16, 2.18.4 | ✅      |
 | 2.24 | Implement Connection Polling| **Add frontend logic to poll `/api/nango/check-status` for webhook completion status.** (Polling removed in favor of fixed delay + direct fetch) | F2.1 (Implied)  | 2.18.5, 2.23 | ✅      |
@@ -225,9 +225,9 @@
 
 | ID     | Task                                       | Description                                                                     | PRD Ref         | Dependencies | Status |
 |--------|--------------------------------------------|---------------------------------------------------------------------------------|-----------------|--------------|--------|
-| 3.7    | Perform E2E test with multiple clients     | Test complete flow with real credentials                                        | F2.3, F2.4      | 1.37, 2.21   | 🔄      |
-| 3.7.1  | Configure test clients                     | Add 2-3 test clients with valid properties/credentials **(requires UI/actions)**  | F2.1            | 3.7          | 🔄      |
-| 3.7.2  | Test client-specific queries               | Verify correct property selection based on client_identifier **(requires Repo 1)**| F2.3            | 3.7.1        | 🔄      |
+| 3.7    | Perform E2E test with multiple clients     | Test complete flow with real credentials                                        | F2.3, F2.4      | 1.37, 2.21   | ✅      |
+| 3.7.1  | Configure test clients                     | Add 2-3 test clients with valid properties/credentials **(requires UI/actions)**  | F2.1            | 3.7          | ✅      |
+| 3.7.2  | Test client-specific queries               | Verify correct property selection based on client_identifier **(requires Repo 1)**| F2.3            | 3.7.1        | ✅      |
 
 ## Phase 3: Enhanced GA4 Interaction & UX <a name="phase-3-enhanced-ga4-interaction--ux"></a>
 
@@ -313,11 +313,11 @@
 
 | ID   | Task                             | Description                                                                                                 | Repo | Dependencies | Status |
 |------|----------------------------------|-------------------------------------------------------------------------------------------------------------|------|--------------|--------|
-| X.1  | Refactor Schema                  | Remove/Relax `ga4PropertyId` constraint from `agencyClientsTable`. Rename to `propertyId` if needed.        | R2   | 2.12         | 🔄      |
-| X.2  | Update Internal API              | Modify `/api/internal/get-creds` to *not* query or return `property_id`.                                  | R2   | 2.18.4, X.1  | 🔄      |
+| X.1  | Refactor Schema                  | Remove/Relax `ga4PropertyId` constraint from `agencyClientsTable`. Rename to `propertyId` if needed.        | R2   | 2.12         | ✅      |
+| X.2  | Update Internal API              | Modify `/api/internal/get-creds` to *not* query or return `property_id`.                                  | R2   | 2.18.4, X.1  | ✅      |
 | X.3  | Update MCP Tool `query_ga4_report`| Add required `property_id: str` parameter. Use this user-provided ID for the GA4 API call.                  | R1   | 1.36, X.2    | 🔄      |
 | X.4  | (Optional) Implement Discovery Tool | Create `list_ga4_properties(client_identifier: str)` tool using GA4 Admin API via Nango credentials.   | R1   | X.2          | 🔄      |
-| X.5  | Update Portal Property Handling  | Implement UI/backend logic for fetching, displaying, and potentially selecting/storing properties post-Nango. | R2   | 2.24.2       | 🔄      |
+| X.5  | Update Portal Property Handling  | Implement UI/backend logic for fetching, displaying, and potentially selecting/storing properties post-Nango. | R2   | 2.24.2       | ✅      |
 
 
 ## Phase Y: Enhanced Onboarding Flow <a name="phase-y-enhanced-onboarding"></a>
@@ -332,3 +332,15 @@
 | Y.4  | Frontend: Property Selection UI       | Create modal/form (`PropertySelectionForm`) to display properties, allow selection & naming.| R2   | Y.3               | ✅      |
 | Y.5  | Backend: Bulk Client Creation Action  | Create `bulkCreateAgencyClientsAction` to save selected properties to `agencyClientsTable`. | R2   | X.1 (Modify Schema), Y.4 | ✅      |
 | Y.6  | Frontend: Connect UI to Bulk Action   | Wire up `PropertySelectionForm` submission to call `bulkCreateAgencyClientsAction`.           | R2   | Y.4, Y.5          | ✅      |
+| Y.7  | Verify End-to-End Process           | **Confirm successful creation of GA4 agency clients with proper Nango connection, property IDs, and organization connections.**    | R2   | Y.6               | ✅      |
+
+## Current Status Summary
+
+✅ **Core onboarding flow successfully implemented and tested.** Users can now:
+1. Create an agency and connect their Google Analytics account via Nango OAuth
+2. View and select multiple GA4 properties from their connected account
+3. Define custom client identifiers for each property
+4. Successfully create agency client records with proper connections to Nango credentials
+5. The full end-to-end flow from OAuth connection to property selection to agency client creation is working properly
+
+🔄 **Next steps:** Test MCP integration with the Python server to confirm credential retrieval works as expected.

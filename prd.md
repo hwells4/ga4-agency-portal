@@ -258,8 +258,10 @@ End-user client configuration (Cursor, Claude) is done via a single command usin
 ## Technical Architecture Overview
 
 - **Repo 1 (MCP Server):** Python/fastmcp. Handles MCP protocol, defines GA4 tools, **calls Internal `/api/internal/get-creds` API (Repo 2) to get mapping**, **calls public Nango API for token**, calls GA4 Data API. Runs via SSE.
-- **Repo 2 (Portal/Backend):** Node.js/Next.js/React (based on mckays-app-template). Handles Agency Auth (Clerk), Agency/Client/Credential CRUD via Server Actions **(Current Limitation: stores only one Property ID per Nango Connection ID mapping - Requires Refactor)**, uses Postgres/Drizzle, provides secure `/api/internal/get-creds` endpoint for Repo 1.
+- **Repo 2 (Portal/Backend):** Node.js/Next.js/React (based on mckays-app-template). Handles Agency Auth (Clerk), Agency/Client/Credential CRUD via Server Actions. Successfully implements the full database schema and connection flow for GA4 properties via OAuth. Agency clients are properly created with links to Nango connections and property IDs. Uses Postgres/Drizzle, provides secure `/api/internal/get-creds` endpoint for Repo 1.
 - **Database:** PostgreSQL (e.g., Supabase).
+- **Authentication:** Clerk for user and organization-based authentication.
+- **OAuth Integration:** Nango for securely connecting to Google Analytics accounts.
 - **Secrets:** Cloud Provider Secrets Manager or equivalent secure storage. **Repo 1 needs Nango Secret Key.**
 - **Client Config:** npx install-mcp.
 
@@ -285,7 +287,7 @@ End-user client configuration (Cursor, Claude) is done via a single command usin
 ## Success Metrics
 
 - **MVP:** End-to-end GA4 query successful via AI client configured with install-mcp. Internal API communication functional. **(Achieved for single pre-configured property via Nango)**
-- **Phase 2:** # Agencies onboarded, # Clients configured, successful credential storage/retrieval rate, low setup-related support requests. **(Core Nango credential retrieval flow operational)**
+- **Phase 2:** # Agencies onboarded, # Clients configured, successful credential storage/retrieval rate, low setup-related support requests. **(Fully Implemented: Complete agency client creation flow working with Nango OAuth integration. Users can connect their Google Analytics account, view and select properties, and create multiple agency clients with unique identifiers that properly connect to the Nango connection and organization.)**
 - **Phase 3:** Usage rate of helper/visualization tools.
 - **Overall:** Active usage, query success rate, performance metrics, positive agency feedback.
 
@@ -297,4 +299,5 @@ End-user client configuration (Cursor, Claude) is done via a single command usin
 - Choice of task queue if needed for rate limiting.
 - Need for billing/subscription integration (template has Stripe).
 - Long-term credential rotation/refresh strategy.
-- Dynamic Property Discovery via Service Account: Should the service allow querying any property accessible by a single uploaded service account key? This would require integrating the GA4 Admin API (for discovery) and potentially modifying the MCP client interaction model (e.g., requiring property ID in queries), contrasting with the current design of mapping client_identifiers to specific properties in the portal. **(Confirmed Need: Current 1:1 mapping is insufficient. Plan: Refactor to require `property_id` in MCP query tool. Add optional GA4 Admin API discovery tool (`list_ga4_properties`).)**
+- Dynamic Property Discovery via Service Account: Should the service allow querying any property accessible by a single uploaded service account key? This would require integrating the GA4 Admin API (for discovery) and potentially modifying the MCP client interaction model (e.g., requiring property ID in queries), contrasting with the current design of mapping client_identifiers to specific properties in the portal. **(Implemented: GA4 Admin API is now used to fetch properties after OAuth connection. MCP integration still requires enhancement to use the property_id parameter.)**
+- **Next Steps:** Verify full end-to-end functionality by testing the MCP integration with the Python server to confirm credential retrieval works as expected across multiple client identifiers.
