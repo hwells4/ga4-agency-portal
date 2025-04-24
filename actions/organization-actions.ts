@@ -45,11 +45,12 @@ export async function createClerkOrganizationAction({
 }
 
 /**
- * Placeholder action for joining a Clerk Organization using an invite code.
- * NOTE: Clerk's standard flow often uses invite links. Implementing this
- * securely with just a code might require specific API usage like 
- * managing OrganizationInvitations or OrganizationMemberships directly.
- * Consider using Clerk's <OrganizationList /> component for a standard join flow.
+ * Redirects user to the invitation acceptance flow for a Clerk Organization.
+ * Note: Clerk's standard flow for handling invitations relies on invitation links
+ * where the user receives an email with a link containing a ticket token.
+ * 
+ * This action simply redirects to the Clerk invitation URL which will handle
+ * the appropriate sign-in or sign-up flow based on whether the user exists.
  */
 export async function joinClerkOrganizationAction({
   inviteCode,
@@ -67,14 +68,12 @@ export async function joinClerkOrganizationAction({
   }
 
   const trimmedCode = inviteCode.trim();
-  console.log("Attempting to join organization with code (placeholder):", trimmedCode);
+  console.log("Redirecting to organization invitation link:", trimmedCode);
 
   try {
-    const client = await clerkClient();
-    await client.invitations.acceptOrganizationInvitation({
-      invitationId: trimmedCode,
-      userId,
-    });
+    // Redirect to the invitation URL which contains the ticket token
+    // This will trigger the Clerk invitation flow
+    redirect(trimmedCode);
   } catch (error: any) {
     console.error("Error joining Clerk organization:", error);
     return {
@@ -82,6 +81,4 @@ export async function joinClerkOrganizationAction({
       message: error.errors?.[0]?.message || error.message || "Unknown error",
     };
   }
-
-  redirect('/agency'); // Redirect after successful join
 } 
