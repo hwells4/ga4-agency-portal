@@ -129,7 +129,10 @@ export default function ConnectNangoButton({
           "Nango popup should open. Please complete Google authentication."
         )
 
-        const nango = new Nango()
+        const nango = new Nango({
+          publicKey: process.env.NEXT_PUBLIC_NANGO_PUBLIC_KEY,
+          host: process.env.NEXT_PUBLIC_NANGO_BASE_URL
+        })
 
         nango.openConnectUI({
           sessionToken: sessionToken,

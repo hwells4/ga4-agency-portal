@@ -206,7 +206,7 @@
 | ID   | Task                      | Description                                                                     | PRD Ref         | Dependencies | Status |
 |------|---------------------------|---------------------------------------------------------------------------------|-----------------|--------------|--------|
 | 2.20 | Write backend tests       | Test Server Actions and API logic                                               | F2.2, T2.4      | 2.18         | 🔄      |
-| 2.21 | Test Portal UI            | Manually test the complete UI flow                                              | F2.1            | 2.19.5       | ✅      |
+| 2.21 | Test Portal UI            | Manually test the complete UI flow                                              | F2.1            | 2.19.5       | 🔄      |
 | 2.22 | **Test Nango Connection**   | **Verify `fetchGa4PropertiesAction` works after Nango connection/webhook/polling** | F2.1, F2.2      | 2.16, 2.24.2 | ✅      |
 | 2.23 | **Verify Nango Webhook**  | **Confirm Nango webhook successfully triggers callback & DB update.**           | F2.2, T2.3      | 2.16, 2.18.4 | ✅      |
 | 2.24 | Implement Connection Polling| **Add frontend logic to poll `/api/nango/check-status` for webhook completion status.** (Polling removed in favor of fixed delay + direct fetch) | F2.1 (Implied)  | 2.18.5, 2.23 | ✅      |
@@ -217,7 +217,7 @@
 
 | ID   | Task                             | Description                                                                    | PRD Ref | Dependencies | Status |
 |------|----------------------------------|--------------------------------------------------------------------------------|---------|--------------|--------|
-| 1.35 | Update query_ga4_report          | **MCP Tool updated to call Internal API, then Nango API for token** | F2.3    | 2.18.4       | ✅      |
+| 1.35 | Update query_ga4_report          | **MCP Tool updated to call Internal API, then Nango API for token** | F2.3    | 2.18.4   |              | ✅
 | 1.36 | Add credential error handling    | Handle cases where internal API or Nango API calls fail                        | F2.3    | 1.35         | ✅      |
 | 1.37 | Write credential tests           | Add tests for dynamic credential handling via internal API and Nango calls     | F2.3    | 1.36         | 🔄      |
 

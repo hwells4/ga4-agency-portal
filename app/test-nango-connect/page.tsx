@@ -5,6 +5,7 @@ import {
   fetchGa4PropertiesAction
 } from "@/actions/nango-actions"
 import TestNangoConnectClient from "./_components/test-nango-connect-client"
+import NangoEnvCheck from "./_components/nango-env-check"
 
 // WARNING: This is a temporary development/test page. Remove or secure properly before production.
 
@@ -21,6 +22,7 @@ export default async function TestNangoConnectPage() {
         properties using the same Client ID and log the results to the
         **BROWSER** console.
       </p>
+      <NangoEnvCheck />
       <TestNangoConnectClient
         initiateAction={initiateNangoConnectionAction}
         fetchAction={fetchGa4PropertiesAction}

@@ -5,6 +5,9 @@ import logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Note: When using a self-hosted Nango instance, make sure to set:
+# NANGO_BASE_URL=https://your-self-hosted-nango-instance.com
+
 async def fetch_nango_credentials(
     connection_id: str,
     nango_base_url: str,
