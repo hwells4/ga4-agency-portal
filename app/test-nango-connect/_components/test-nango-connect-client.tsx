@@ -190,7 +190,17 @@ export default function TestNangoConnectClient({
       const sessionToken = initiateResult.data.sessionToken
       console.log("Received session token:", sessionToken)
 
-      const nangoFrontend = new Nango()
+      console.log("Creating Nango instance with:", {
+        publicKey: process.env.NEXT_PUBLIC_NANGO_PUBLIC_KEY,
+        host: process.env.NEXT_PUBLIC_NANGO_BASE_URL
+      })
+
+      const nangoFrontend = new Nango({
+        publicKey: process.env.NEXT_PUBLIC_NANGO_PUBLIC_KEY,
+        host: process.env.NEXT_PUBLIC_NANGO_BASE_URL
+      })
+
+      console.log("Nango instance created successfully")
       setMessage(
         "Nango popup should open. Please complete Google authentication."
       )

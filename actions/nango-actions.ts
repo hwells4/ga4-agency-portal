@@ -116,6 +116,21 @@ export async function initiateNangoConnectionAction(
   providerConfigKey: string
 ): Promise<ActionState<{ sessionToken: string }>> {
   try {
+    console.log(`[NANGO DEBUG] ==== STARTING NANGO CONNECTION PROCESS ====`);
+    console.log(`[NANGO DEBUG] SDK Version: ${require('@nangohq/node').version || 'unknown'}`);
+    console.log(`[NANGO DEBUG] Input parameters:`, {
+      agencyId,
+      userId,
+      providerConfigKey
+    });
+    
+    // Log environment setup
+    console.log(`[NANGO DEBUG] Environment configuration:`, {
+      NANGO_BASE_URL: process.env.NANGO_BASE_URL || 'NOT SET',
+      NANGO_SECRET_KEY: process.env.NANGO_SECRET_KEY ? 'CONFIGURED' : 'NOT SET',
+      NODE_ENV: process.env.NODE_ENV
+    });
+
     if (!providerConfigKey) {
       throw new Error("Missing providerConfigKey.")
     }
@@ -127,20 +142,29 @@ export async function initiateNangoConnectionAction(
       // Ensure secret key is loaded (Nango client init might not throw immediately)
       throw new Error("Nango secret key is not configured.")
     }
+    if (!process.env.NANGO_BASE_URL) {
+      throw new Error("Nango base URL is not configured.")
+    }
 
     console.log(
-      `Creating Nango connect session for user: ${userId}, agency: ${agencyId}, provider: ${providerConfigKey}`
+      `[NANGO DEBUG] Creating Nango connect session for user: ${userId}, agency: ${agencyId}, provider: ${providerConfigKey}`
     )
-    console.log(`Nango connection details - host: ${process.env.NANGO_BASE_URL}, providerConfigKey: ${providerConfigKey}`)
+    
+    // Validate Nango host URL format
+    const baseUrl = process.env.NANGO_BASE_URL;
+    if (!baseUrl.startsWith('http')) {
+      throw new Error(`Invalid Nango host URL format: ${baseUrl}. Must start with http:// or https://`);
+    }
+    
+    const expectedApiEndpoint = `${baseUrl}/api/v1/oauth/token`;
+    console.log(`[NANGO DEBUG] Expected API endpoint: ${expectedApiEndpoint}`);
 
     // Define the state to pass to Nango and receive back in the callback
     // Useful for context in the callback handler
     const statePayload = JSON.stringify({ agencyId: agencyId, userId: userId });
-
-    // Ask Nango for a secure session token
-    console.log(`About to call nango.createConnectSession with SDK version: ${require('@nangohq/node').version || 'unknown'}`)
-    try {
-      const result = await nango.createConnectSession({
+    
+    // Prepare request payload for better debugging
+    const requestPayload = {
       end_user: {
         id: userId
       },
@@ -148,22 +172,37 @@ export async function initiateNangoConnectionAction(
         id: agencyId
       },
       allowed_integrations: [providerConfigKey],
-      // Pass state via integrations_config_defaults, keyed by providerConfigKey
       integrations_config_defaults: {
-        [providerConfigKey]: { // Key is the provider config key
-           connection_config: { // Embed custom params here
+        [providerConfigKey]: { 
+           connection_config: { 
               state: statePayload
            }
         }
       }
-    })
+    };
+    
+    console.log(`[NANGO DEBUG] Request payload:`, JSON.stringify(requestPayload, null, 2));
+
+    // Ask Nango for a secure session token
+    console.log(`[NANGO DEBUG] About to call nango.createConnectSession with SDK version: ${require('@nangohq/node').version || 'unknown'}`);
+    
+    try {
+      // Record timestamp for latency measurement
+      const startTime = Date.now();
+      
+      const result = await nango.createConnectSession(requestPayload);
+      
+      const endTime = Date.now();
+      console.log(`[NANGO DEBUG] API call completed in ${endTime - startTime}ms`);
+      console.log(`[NANGO DEBUG] Response from Nango API:`, JSON.stringify(result.data || {}, null, 2));
 
       if (!result?.data?.token) {
-          throw new Error("Failed to retrieve session token from Nango API.");
+        console.error(`[NANGO DEBUG] Unexpected response format - missing token:`, result);
+        throw new Error("Failed to retrieve session token from Nango API. Unexpected response format.");
       }
 
       const sessionToken = result.data.token;
-      console.log(`Nango session token generated successfully for user: ${userId}, agency: ${agencyId}`)
+      console.log(`[NANGO DEBUG] Session token generated successfully: ${sessionToken.substring(0, 10)}...`);
 
       // Return the session token to the frontend
       return {
@@ -172,23 +211,84 @@ export async function initiateNangoConnectionAction(
         data: { sessionToken }
       }
     } catch (innerError: any) {
-      console.error("Inner error during Nango createConnectSession:", innerError);
-      throw innerError; // Re-throw to be caught by the outer try/catch
+      console.error(`[NANGO DEBUG] Inner error during Nango createConnectSession:`, innerError);
+      
+      // Verbose error logging to diagnose 404 specifically
+      console.error(`[NANGO DEBUG] Error type: ${typeof innerError}`);
+      console.error(`[NANGO DEBUG] Error name: ${innerError.name}`);
+      console.error(`[NANGO DEBUG] Error message: ${innerError.message}`);
+      console.error(`[NANGO DEBUG] Error code: ${innerError.code}`);
+      
+      if (innerError.isAxiosError) {
+        const axiosError = innerError;
+        console.error(`[NANGO DEBUG] Axios error details:`, {
+          status: axiosError.response?.status,
+          statusText: axiosError.response?.statusText,
+          url: axiosError.config?.url,
+          baseURL: axiosError.config?.baseURL,
+          fullURL: `${axiosError.config?.baseURL || ''}${axiosError.config?.url || ''}`,
+          method: axiosError.config?.method,
+          headers: axiosError.config?.headers,
+          responseData: axiosError.response?.data,
+          responseHeaders: axiosError.response?.headers
+        });
+        
+        // Detailed 404 diagnostics
+        if (axiosError.response?.status === 404) {
+          console.error(`[NANGO DEBUG] 404 Error! Full URL that returned 404: ${axiosError.config?.baseURL || ''}${axiosError.config?.url || ''}`);
+          console.error(`[NANGO DEBUG] Possible causes of 404:
+            1. The Nango host URL is incorrect or pointing to a non-Nango server
+            2. The Nango server version doesn't match the SDK version
+            3. The API endpoint structure has changed in newer versions
+            4. The Nango server isn't properly running or initialized`);
+        }
+      }
+      
+      // Re-throw to be caught by the outer catch
+      throw innerError;
     }
   } catch (error: any) {
-    console.error("Error creating Nango connect session:", error)
+    console.error(`[NANGO DEBUG] OUTER ERROR creating Nango connect session:`, error);
+    
+    // Create a detailed error object for frontend diagnosis
+    const errorDetails = {
+      message: error.message || 'Unknown error',
+      name: error.name,
+      code: error.code,
+      stack: error.stack
+    };
+    
+    console.error(`[NANGO DEBUG] Error details:`, JSON.stringify(errorDetails, null, 2));
     
     // Handle Axios errors with more details
     if (error.isAxiosError) {
-      console.error("Axios error details:", {
-        status: error.response?.status,
-        statusText: error.response?.statusText,
-        url: error.config?.url,
-        baseURL: error.config?.baseURL,
-        method: error.config?.method,
-        data: error.response?.data
+      const axiosError = error;
+      console.error(`[NANGO DEBUG] Axios error details for frontend:`, {
+        status: axiosError.response?.status,
+        statusText: axiosError.response?.statusText,
+        url: axiosError.config?.url,
+        baseURL: axiosError.config?.baseURL,
+        fullURL: `${axiosError.config?.baseURL || ''}${axiosError.config?.url || ''}`,
+        method: axiosError.config?.method,
+        responseData: axiosError.response?.data
       });
+      
+      // Handle specific HTTP error codes with better messages
+      if (axiosError.response?.status === 404) {
+        return {
+          isSuccess: false,
+          message: `Failed to create Nango connect session: 404 Not Found. The endpoint ${axiosError.config?.url} does not exist on the Nango server at ${axiosError.config?.baseURL}. Check server version compatibility.`
+        };
+      }
+      if (axiosError.response?.status === 401 || axiosError.response?.status === 403) {
+        return {
+          isSuccess: false,
+          message: `Failed to create Nango connect session: Authentication failed. Check that NANGO_SECRET_KEY is correct.`
+        };
+      }
     }
+    
+    console.log(`[NANGO DEBUG] ==== END OF NANGO CONNECTION ATTEMPT (FAILED) ====`);
     
     return {
       isSuccess: false,

@@ -107,11 +107,65 @@ export default function ConnectNangoButton({
   }
 
   const handleConnect = async () => {
+    console.log("========= NANGO CONNECTION PROCESS - CLIENT SIDE =========")
     console.log("Button clicked, starting connection process")
-    console.log("ENV VARS:", {
-      PUBLIC_KEY: process.env.NEXT_PUBLIC_NANGO_PUBLIC_KEY,
-      BASE_URL: process.env.NEXT_PUBLIC_NANGO_BASE_URL
+
+    // Get and log the SDK version if possible
+    try {
+      // @ts-ignore - Accessing version property that might exist on the Nango object
+      console.log(
+        "Frontend SDK Version:",
+        Nango.version || "@nangohq/frontend version unknown"
+      )
+    } catch (e) {
+      console.log("Could not determine Nango frontend SDK version")
+    }
+
+    // Log more detailed environment variables
+    console.log("FRONTEND ENV VARS:", {
+      PUBLIC_KEY: process.env.NEXT_PUBLIC_NANGO_PUBLIC_KEY || "NOT SET",
+      BASE_URL: process.env.NEXT_PUBLIC_NANGO_BASE_URL || "NOT SET"
     })
+
+    // Validate required environment variables on the client side
+    if (!process.env.NEXT_PUBLIC_NANGO_PUBLIC_KEY) {
+      const errorMsg =
+        "Missing NEXT_PUBLIC_NANGO_PUBLIC_KEY environment variable"
+      console.error(errorMsg)
+      setError(errorMsg)
+      toast({
+        title: "Configuration Error",
+        description: errorMsg,
+        variant: "destructive"
+      })
+      return
+    }
+
+    if (!process.env.NEXT_PUBLIC_NANGO_BASE_URL) {
+      const errorMsg = "Missing NEXT_PUBLIC_NANGO_BASE_URL environment variable"
+      console.error(errorMsg)
+      setError(errorMsg)
+      toast({
+        title: "Configuration Error",
+        description: errorMsg,
+        variant: "destructive"
+      })
+      return
+    }
+
+    // Validate URL format
+    const baseUrl = process.env.NEXT_PUBLIC_NANGO_BASE_URL
+    if (!baseUrl.startsWith("http")) {
+      const errorMsg = `Invalid Nango base URL format: ${baseUrl}. Must start with http:// or https://`
+      console.error(errorMsg)
+      setError(errorMsg)
+      toast({
+        title: "Configuration Error",
+        description: errorMsg,
+        variant: "destructive"
+      })
+      return
+    }
 
     setIsLoading(true)
     setStatusMessage(null)
@@ -121,11 +175,21 @@ export default function ConnectNangoButton({
     setIsComplete(false)
 
     try {
-      console.log("Calling initiateNangoConnectionAction")
+      console.log("Calling initiateNangoConnectionAction with params:", {
+        agencyId,
+        userId,
+        providerConfigKey
+      })
+
+      const startTime = Date.now()
       const result = await initiateNangoConnectionAction(
         agencyId,
         userId,
         providerConfigKey
+      )
+      const endTime = Date.now()
+      console.log(
+        `initiateNangoConnectionAction completed in ${endTime - startTime}ms`
       )
       console.log("Result from initiateNangoConnectionAction:", result)
 
@@ -142,6 +206,11 @@ export default function ConnectNangoButton({
           host: process.env.NEXT_PUBLIC_NANGO_BASE_URL
         })
 
+        console.log(
+          "Expected openConnectUI API endpoint:",
+          `${process.env.NEXT_PUBLIC_NANGO_BASE_URL}/oauth/connect`
+        )
+
         const nango = new Nango({
           publicKey: process.env.NEXT_PUBLIC_NANGO_PUBLIC_KEY,
           host: process.env.NEXT_PUBLIC_NANGO_BASE_URL
@@ -151,14 +220,19 @@ export default function ConnectNangoButton({
 
         console.log(
           "About to open Nango Connect UI with session token:",
-          sessionToken
+          sessionToken.substring(0, 10) + "..."
         )
 
         nango.openConnectUI({
           sessionToken: sessionToken,
           onEvent: async (event: any) => {
             console.log("Nango UI event received:", event)
-            console.log("Nango UI Event:", event)
+            console.log(
+              "Nango UI Event type:",
+              event.type,
+              "payload:",
+              event.payload
+            )
             if (event.type === "connect") {
               const nangoPublicConnectionId = event.payload.connectionId
               console.log(
@@ -285,6 +359,10 @@ export default function ConnectNangoButton({
               }
             } else if (event.type === "error") {
               console.error("Nango UI Error Event:", event.payload)
+              console.error(
+                "Detailed Nango UI error:",
+                JSON.stringify(event.payload, null, 2)
+              )
               setError(
                 event.payload?.message || "Error during Nango connection."
               )
@@ -299,6 +377,37 @@ export default function ConnectNangoButton({
       }
     } catch (err: any) {
       console.error("Error initiating Nango connection:", err)
+      // Extract more detailed information about the error
+      const errorInfo = {
+        name: err.name,
+        message: err.message,
+        stack: err.stack,
+        code: err.code
+      }
+
+      // Check specifically for network request errors
+      if (err.request) {
+        console.error("Request was made but no response received:", {
+          method: err.config?.method,
+          url: err.config?.url,
+          baseURL: err.config?.baseURL,
+          data: err.config?.data,
+          headers: err.config?.headers
+        })
+      }
+
+      // Try to detect if error is related to CORS
+      if (
+        err.message &&
+        (err.message.includes("CORS") ||
+          err.message.includes("cross-origin") ||
+          err.message.includes("Access-Control-Allow-Origin"))
+      ) {
+        console.error(
+          "DETECTED POSSIBLE CORS ERROR! The Nango server might not allow requests from this origin."
+        )
+      }
+
       console.error(
         "Detailed error object:",
         JSON.stringify(
@@ -311,16 +420,37 @@ export default function ConnectNangoButton({
               ? {
                   status: err.response.status,
                   statusText: err.response.statusText,
-                  data: err.response.data
+                  data: err.response.data,
+                  headers: err.response.headers
                 }
-              : "No response"
+              : "No response",
+            request: err.request
+              ? "Request was made but no response received"
+              : "No request sent"
           },
           null,
           2
         )
       )
-      const errorMessage =
+
+      // Generate a more user-friendly error message based on the error
+      let errorMessage =
         err.message || "An unexpected error occurred. Please try again."
+
+      // For 404 errors, add additional context
+      if (err.response?.status === 404) {
+        errorMessage = `404 Not Found: The Nango server endpoint does not exist or is unreachable at ${process.env.NEXT_PUBLIC_NANGO_BASE_URL}. Check server configuration.`
+        console.error(
+          "404 ERROR DETECTED: The endpoint might not exist on the Nango server."
+        )
+      }
+
+      // For network errors, provide more helpful messaging
+      if (!err.response && err.request) {
+        errorMessage =
+          "Network error: Could not connect to the Nango server. Please check your internet connection or server availability."
+      }
+
       setError(errorMessage)
       toast({
         title: "Connection Failed",
@@ -328,6 +458,8 @@ export default function ConnectNangoButton({
         variant: "destructive"
       })
       setIsLoading(false)
+
+      console.log("========= END NANGO CONNECTION PROCESS (FAILED) =========")
     }
   }
 
