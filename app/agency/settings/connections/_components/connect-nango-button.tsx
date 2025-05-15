@@ -137,14 +137,27 @@ export default function ConnectNangoButton({
           "Nango popup should open. Please complete Google authentication."
         )
 
+        console.log("Creating Nango instance with:", {
+          publicKey: process.env.NEXT_PUBLIC_NANGO_PUBLIC_KEY,
+          host: process.env.NEXT_PUBLIC_NANGO_BASE_URL
+        })
+
         const nango = new Nango({
           publicKey: process.env.NEXT_PUBLIC_NANGO_PUBLIC_KEY,
           host: process.env.NEXT_PUBLIC_NANGO_BASE_URL
         })
 
+        console.log("Nango instance created successfully")
+
+        console.log(
+          "About to open Nango Connect UI with session token:",
+          sessionToken
+        )
+
         nango.openConnectUI({
           sessionToken: sessionToken,
           onEvent: async (event: any) => {
+            console.log("Nango UI event received:", event)
             console.log("Nango UI Event:", event)
             if (event.type === "connect") {
               const nangoPublicConnectionId = event.payload.connectionId
