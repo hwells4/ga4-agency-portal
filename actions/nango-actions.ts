@@ -131,13 +131,16 @@ export async function initiateNangoConnectionAction(
     console.log(
       `Creating Nango connect session for user: ${userId}, agency: ${agencyId}, provider: ${providerConfigKey}`
     )
+    console.log(`Nango connection details - host: ${process.env.NANGO_BASE_URL}, providerConfigKey: ${providerConfigKey}`)
 
     // Define the state to pass to Nango and receive back in the callback
     // Useful for context in the callback handler
     const statePayload = JSON.stringify({ agencyId: agencyId, userId: userId });
 
     // Ask Nango for a secure session token
-    const result = await nango.createConnectSession({
+    console.log(`About to call nango.createConnectSession with SDK version: ${require('@nangohq/node').version || 'unknown'}`)
+    try {
+      const result = await nango.createConnectSession({
       end_user: {
         id: userId
       },
@@ -155,21 +158,38 @@ export async function initiateNangoConnectionAction(
       }
     })
 
-    if (!result?.data?.token) {
-        throw new Error("Failed to retrieve session token from Nango API.");
-    }
+      if (!result?.data?.token) {
+          throw new Error("Failed to retrieve session token from Nango API.");
+      }
 
-    const sessionToken = result.data.token;
-    console.log(`Nango session token generated successfully for user: ${userId}, agency: ${agencyId}`)
+      const sessionToken = result.data.token;
+      console.log(`Nango session token generated successfully for user: ${userId}, agency: ${agencyId}`)
 
-    // Return the session token to the frontend
-    return {
-      isSuccess: true,
-      message: "Nango session token generated successfully.",
-      data: { sessionToken }
+      // Return the session token to the frontend
+      return {
+        isSuccess: true,
+        message: "Nango session token generated successfully.",
+        data: { sessionToken }
+      }
+    } catch (innerError: any) {
+      console.error("Inner error during Nango createConnectSession:", innerError);
+      throw innerError; // Re-throw to be caught by the outer try/catch
     }
   } catch (error: any) {
     console.error("Error creating Nango connect session:", error)
+    
+    // Handle Axios errors with more details
+    if (error.isAxiosError) {
+      console.error("Axios error details:", {
+        status: error.response?.status,
+        statusText: error.response?.statusText,
+        url: error.config?.url,
+        baseURL: error.config?.baseURL,
+        method: error.config?.method,
+        data: error.response?.data
+      });
+    }
+    
     return {
       isSuccess: false,
       message: `Failed to create Nango connect session: ${error.message || error}`
