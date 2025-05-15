@@ -112,11 +112,8 @@ export default function ConnectNangoButton({
 
     // Get and log the SDK version if possible
     try {
-      // @ts-ignore - Accessing version property that might exist on the Nango object
-      console.log(
-        "Frontend SDK Version:",
-        Nango.version || "@nangohq/frontend version unknown"
-      )
+      // The Nango type doesn't have a static version property
+      console.log("Frontend SDK: @nangohq/frontend")
     } catch (e) {
       console.log("Could not determine Nango frontend SDK version")
     }
