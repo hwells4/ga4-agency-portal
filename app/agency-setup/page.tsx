@@ -20,7 +20,7 @@ export default function AgencySetupPage() {
       <CreateOrganization
         path="/agency-setup"
         routing="path"
-        afterCreateOrganizationUrl="/agency"
+        afterCreateOrganizationUrl="/agency/settings/connections"
         skipInvitationScreen={true}
         hideSlug={false}
       />

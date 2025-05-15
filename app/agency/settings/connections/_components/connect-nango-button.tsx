@@ -107,6 +107,12 @@ export default function ConnectNangoButton({
   }
 
   const handleConnect = async () => {
+    console.log("Button clicked, starting connection process")
+    console.log("ENV VARS:", {
+      PUBLIC_KEY: process.env.NEXT_PUBLIC_NANGO_PUBLIC_KEY,
+      BASE_URL: process.env.NEXT_PUBLIC_NANGO_BASE_URL
+    })
+
     setIsLoading(true)
     setStatusMessage(null)
     setError(null)
@@ -115,11 +121,13 @@ export default function ConnectNangoButton({
     setIsComplete(false)
 
     try {
+      console.log("Calling initiateNangoConnectionAction")
       const result = await initiateNangoConnectionAction(
         agencyId,
         userId,
         providerConfigKey
       )
+      console.log("Result from initiateNangoConnectionAction:", result)
 
       if (result.isSuccess && result.data?.sessionToken) {
         const sessionToken = result.data.sessionToken
@@ -278,6 +286,26 @@ export default function ConnectNangoButton({
       }
     } catch (err: any) {
       console.error("Error initiating Nango connection:", err)
+      console.error(
+        "Detailed error object:",
+        JSON.stringify(
+          {
+            name: err.name,
+            message: err.message,
+            stack: err.stack,
+            code: err.code,
+            response: err.response
+              ? {
+                  status: err.response.status,
+                  statusText: err.response.statusText,
+                  data: err.response.data
+                }
+              : "No response"
+          },
+          null,
+          2
+        )
+      )
       const errorMessage =
         err.message || "An unexpected error occurred. Please try again."
       setError(errorMessage)

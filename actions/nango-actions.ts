@@ -13,7 +13,8 @@ import { withRLSRead } from "@/actions/db/rls-helpers"
 
 // Initialize Nango client - ensure env vars are set
 const nango = new Nango({
-  secretKey: process.env.NANGO_SECRET_KEY!
+  secretKey: process.env.NANGO_SECRET_KEY!,
+  baseUrl: process.env.NANGO_BASE_URL
 })
 
 // Initialize Google API client
