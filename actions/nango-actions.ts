@@ -167,25 +167,44 @@ export async function initiateNangoConnectionAction(
       // Record timestamp for latency measurement
       const startTime = Date.now();
       
-      // For v0.36.78, we need to use the correct API
-      // The post method only takes a single parameter in v0.36.78
-      const combinedParams = {
-        endpoint: '/oauth/sessions',
-        data: {
-          provider_config_key: providerConfigKey,
-          connection_config: { state: statePayload },
-          end_user_id: userId,
-          organization_id: agencyId
+      // For v0.36.78, try a simpler direct API call
+      // Skip the proxy mechanism and do a direct HTTP call
+      const axios = require('axios');
+      
+      // Construct the full URL manually
+      const url = `${process.env.NANGO_BASE_URL}/oauth/sessions`;
+      console.log(`[NANGO DEBUG] Making direct HTTP POST to ${url}`);
+      
+      const payload = {
+        provider_config_key: providerConfigKey,
+        connection_config: { state: statePayload },
+        end_user_id: userId,
+        organization_id: agencyId
+      };
+      
+      console.log(`[NANGO DEBUG] Payload: ${JSON.stringify(payload, null, 2)}`);
+      
+      const axiosConfig = {
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${process.env.NANGO_SECRET_KEY}`
         }
       };
-      const result = await nango.post(combinedParams);
+      
+      const result = await axios.post(url, payload, axiosConfig);
       
       const endTime = Date.now();
       console.log(`[NANGO DEBUG] API call completed in ${endTime - startTime}ms`);
-      console.log(`[NANGO DEBUG] Response from Nango API:`, JSON.stringify(result || {}, null, 2));
+      console.log(`[NANGO DEBUG] Response from Nango API:`, JSON.stringify({
+        status: result.status,
+        statusText: result.statusText,
+        headers: result.headers,
+        data: result.data
+      }, null, 2));
 
       if (!result?.data?.token) {
-        console.error(`[NANGO DEBUG] Unexpected response format - missing token:`, result);
+        console.error(`[NANGO DEBUG] Unexpected response format - missing token:`, 
+          JSON.stringify(result.data || {}, null, 2));
         throw new Error("Failed to retrieve session token from Nango API. Unexpected response format.");
       }
 
@@ -461,6 +480,7 @@ export async function fetchGa4PropertiesAction(
 
     // 2. Fetch fresh access token from Nango
     console.log(`Fetching Nango token for connection: ${nangoConnectionId}`);
+    // For v0.36.78, use the positional parameters 
     const connection = await nango.getConnection(
       providerConfigKey,
       nangoConnectionId // Use the verified nangoConnectionId
