@@ -11,7 +11,7 @@ import { BetaAnalyticsDataClient } from "@google-analytics/data"
 import { auth } from "@clerk/nextjs/server"
 import { withRLSRead } from "@/actions/db/rls-helpers"
 
-// Initialize Nango client - ensure env vars are set
+// Initialize Nango client for v0.36.78
 const nango = new Nango({
   secretKey: process.env.NANGO_SECRET_KEY!,
   host: process.env.NANGO_BASE_URL
@@ -147,7 +147,7 @@ export async function initiateNangoConnectionAction(
     }
 
     console.log(
-      `[NANGO DEBUG] Creating Nango connect session for user: ${userId}, agency: ${agencyId}, provider: ${providerConfigKey}`
+      `[NANGO DEBUG] Creating Nango session for user: ${userId}, agency: ${agencyId}, provider: ${providerConfigKey}`
     )
     
     // Validate Nango host URL format
@@ -156,45 +156,33 @@ export async function initiateNangoConnectionAction(
       throw new Error(`Invalid Nango host URL format: ${baseUrl}. Must start with http:// or https://`);
     }
     
-    const expectedApiEndpoint = `${baseUrl}/api/v1/oauth/token`;
-    console.log(`[NANGO DEBUG] Expected API endpoint: ${expectedApiEndpoint}`);
-
     // Define the state to pass to Nango and receive back in the callback
     // Useful for context in the callback handler
     const statePayload = JSON.stringify({ agencyId: agencyId, userId: userId });
     
-    // Prepare request payload for better debugging
-    const requestPayload = {
-      end_user: {
-        id: userId
-      },
-      organization: {
-        id: agencyId
-      },
-      allowed_integrations: [providerConfigKey],
-      integrations_config_defaults: {
-        [providerConfigKey]: { 
-           connection_config: { 
-              state: statePayload
-           }
-        }
-      }
-    };
-    
-    console.log(`[NANGO DEBUG] Request payload:`, JSON.stringify(requestPayload, null, 2));
-
-    // Ask Nango for a secure session token
-    console.log(`[NANGO DEBUG] About to call nango.createConnectSession with SDK version: ${require('@nangohq/node').version || 'unknown'}`);
+    // In Nango v0.36.78, we need to create a session with a simpler API
+    console.log(`[NANGO DEBUG] About to call nango API to create a session with v0.36.78`);
     
     try {
       // Record timestamp for latency measurement
       const startTime = Date.now();
       
-      const result = await nango.createConnectSession(requestPayload);
+      // For v0.36.78, we need to use the correct API
+      // The post method only takes a single parameter in v0.36.78
+      const combinedParams = {
+        endpoint: '/oauth/sessions',
+        data: {
+          provider_config_key: providerConfigKey,
+          connection_config: { state: statePayload },
+          end_user_id: userId,
+          organization_id: agencyId
+        }
+      };
+      const result = await nango.post(combinedParams);
       
       const endTime = Date.now();
       console.log(`[NANGO DEBUG] API call completed in ${endTime - startTime}ms`);
-      console.log(`[NANGO DEBUG] Response from Nango API:`, JSON.stringify(result.data || {}, null, 2));
+      console.log(`[NANGO DEBUG] Response from Nango API:`, JSON.stringify(result || {}, null, 2));
 
       if (!result?.data?.token) {
         console.error(`[NANGO DEBUG] Unexpected response format - missing token:`, result);
@@ -211,7 +199,7 @@ export async function initiateNangoConnectionAction(
         data: { sessionToken }
       }
     } catch (innerError: any) {
-      console.error(`[NANGO DEBUG] Inner error during Nango createConnectSession:`, innerError);
+      console.error(`[NANGO DEBUG] Inner error during Nango session creation:`, innerError);
       
       // Verbose error logging to diagnose 404 specifically
       console.error(`[NANGO DEBUG] Error type: ${typeof innerError}`);

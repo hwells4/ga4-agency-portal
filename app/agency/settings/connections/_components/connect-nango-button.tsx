@@ -16,6 +16,23 @@ import { ActionState } from "@/types"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Terminal } from "lucide-react"
 
+// Define types that match the older Nango SDK version
+interface NangoAuthOptions {
+  connectionId?: string
+  providerConfigKey: string
+  sessionToken?: string
+}
+
+interface NangoEventPayload {
+  connectionId?: string
+  message?: string
+}
+
+interface NangoEvent {
+  type: "success" | "error" | "cancel"
+  payload?: NangoEventPayload
+}
+
 interface ConnectNangoButtonProps {
   agencyId: string
   userId: string
@@ -112,7 +129,6 @@ export default function ConnectNangoButton({
 
     // Get and log the SDK version if possible
     try {
-      // The Nango type doesn't have a static version property
       console.log("Frontend SDK: @nangohq/frontend")
     } catch (e) {
       console.log("Could not determine Nango frontend SDK version")
@@ -203,11 +219,6 @@ export default function ConnectNangoButton({
           host: process.env.NEXT_PUBLIC_NANGO_BASE_URL
         })
 
-        console.log(
-          "Expected openConnectUI API endpoint:",
-          `${process.env.NEXT_PUBLIC_NANGO_BASE_URL}/oauth/connect`
-        )
-
         const nango = new Nango({
           publicKey: process.env.NEXT_PUBLIC_NANGO_PUBLIC_KEY,
           host: process.env.NEXT_PUBLIC_NANGO_BASE_URL
@@ -215,158 +226,171 @@ export default function ConnectNangoButton({
 
         console.log("Nango instance created successfully")
 
-        console.log(
-          "About to open Nango Connect UI with session token:",
-          sessionToken.substring(0, 10) + "..."
-        )
+        // In v0.36.78, we use the auth method differently
+        try {
+          console.log(
+            "Starting Nango auth flow with providerConfigKey:",
+            providerConfigKey
+          )
 
-        nango.openConnectUI({
-          sessionToken: sessionToken,
-          onEvent: async (event: any) => {
-            console.log("Nango UI event received:", event)
-            console.log(
-              "Nango UI Event type:",
-              event.type,
-              "payload:",
-              event.payload
-            )
-            if (event.type === "connect") {
-              const nangoPublicConnectionId = event.payload.connectionId
-              console.log(
-                "Nango 'connect' event received! Public Connection ID:",
-                nangoPublicConnectionId
-              )
-
-              if (nangoPublicConnectionId) {
-                let internalIdResult: ActionState<{
-                  nangoConnectionTableId: string
-                  status: string
-                }> | null = null
-                let success = false
-
-                for (let attempt = 1; attempt <= MAX_FETCH_RETRIES; attempt++) {
-                  setStatusMessage(
-                    `Verifying connection details (attempt ${attempt}/${MAX_FETCH_RETRIES})...`
-                  )
-                  console.log(
-                    `Attempt ${attempt}: Calling getNangoConnectionByPublicIdAction with public ID: ${nangoPublicConnectionId}`
-                  )
-
-                  try {
-                    internalIdResult = await getNangoConnectionByPublicIdAction(
-                      nangoPublicConnectionId
-                    )
-
-                    // If there's a 401 error despite the action call appearing to succeed,
-                    // log a detailed error message to help diagnose
-                    if (
-                      !internalIdResult.isSuccess &&
-                      internalIdResult.message.includes("Authentication")
-                    ) {
-                      console.error(
-                        `Authentication error during attempt ${attempt}:`,
-                        internalIdResult.message
-                      )
-                    }
-                  } catch (internalIdError: any) {
-                    console.error(
-                      `Attempt ${attempt}: Error calling getNangoConnectionByPublicIdAction:`,
-                      internalIdError
-                    )
-                    internalIdResult = {
-                      isSuccess: false,
-                      message:
-                        "An error occurred while verifying connection details."
-                    }
-                    // Break loop on unexpected action error
-                    break
-                  }
-
-                  if (
-                    internalIdResult.isSuccess &&
-                    internalIdResult.data?.nangoConnectionTableId
-                  ) {
-                    const internalId =
-                      internalIdResult.data.nangoConnectionTableId
-                    console.log(
-                      `Attempt ${attempt}: Successfully retrieved internal DB ID: ${internalId}`
-                    )
-                    setNangoConnectionTableId(internalId)
-                    success = true
-                    break // Exit loop on success
-                  } else {
-                    console.warn(
-                      `Attempt ${attempt}: Failed to retrieve internal DB ID: ${internalIdResult.message}`
-                    )
-                    // Check if the error message indicates "not found" or "processing"
-                    const notFoundMessage =
-                      internalIdResult.message?.toLowerCase() || ""
-                    if (
-                      attempt < MAX_FETCH_RETRIES &&
-                      (notFoundMessage.includes("not found") ||
-                        notFoundMessage.includes("processing"))
-                    ) {
-                      console.log(
-                        `Waiting ${FETCH_RETRY_DELAY_MS}ms before next attempt...`
-                      )
-                      await delay(FETCH_RETRY_DELAY_MS)
-                    } else {
-                      // If it's another error or the last attempt, break
-                      break
-                    }
-                  }
-                } // End retry loop
-
-                if (success) {
-                  // The loop successfully found the ID and triggered setNangoConnectionTableId
-                  // Proceed to fetch properties
-                  setStatusMessage(
-                    "Details verified. Preparing to fetch properties..."
-                  )
-                  // We pass the public ID, handleFetchProperties doesn't need the internal one
-                  handleFetchProperties(nangoPublicConnectionId)
-                  // Do not stop loading here; handleFetchProperties continues the process
-                } else {
-                  // Handle final failure after retries (loop finished without success)
-                  const finalErrorMessage =
-                    internalIdResult?.message ||
-                    "Failed to verify connection details after multiple attempts."
-                  console.error(
-                    "Final attempt failed to retrieve internal DB ID:",
-                    finalErrorMessage
-                  )
-                  setError(finalErrorMessage)
-                  setStatusMessage(null)
-                  setIsLoading(false) // Stop loading indicator only on final failure
+          // Create a promise to handle the auth flow completion
+          const authPromise = new Promise<{ connectionId: string }>(
+            (resolve, reject) => {
+              // Setup window event listener to catch the OAuth callback
+              const messageHandler = (event: MessageEvent) => {
+                if (event.origin !== process.env.NEXT_PUBLIC_NANGO_BASE_URL) {
+                  return // Ignore messages from other origins
                 }
-              } else {
+
+                console.log("Received postMessage from Nango:", event.data)
+
+                if (event.data && event.data.type === "nango:auth:success") {
+                  const connectionId = event.data.connectionId
+                  console.log("Auth success with connectionId:", connectionId)
+                  window.removeEventListener("message", messageHandler)
+                  resolve({ connectionId })
+                } else if (
+                  event.data &&
+                  event.data.type === "nango:auth:error"
+                ) {
+                  console.error("Auth error:", event.data.error)
+                  window.removeEventListener("message", messageHandler)
+                  reject(new Error(event.data.error || "Unknown auth error"))
+                } else if (
+                  event.data &&
+                  event.data.type === "nango:auth:cancel"
+                ) {
+                  console.log("Auth canceled by user")
+                  window.removeEventListener("message", messageHandler)
+                  reject(new Error("Authentication canceled by user"))
+                }
+              }
+
+              window.addEventListener("message", messageHandler)
+
+              // For v0.36.78, we need to call auth() with the providerConfigKey
+              // The sessionToken needs to be passed directly in the URL parameters
+              const authParams = `sessionToken=${sessionToken}`
+              nango.auth(providerConfigKey, authParams).catch(error => {
+                window.removeEventListener("message", messageHandler)
+                reject(error)
+              })
+            }
+          )
+
+          // Wait for the auth flow to complete
+          const { connectionId } = await authPromise
+          console.log(
+            "Auth flow completed successfully with connectionId:",
+            connectionId
+          )
+
+          if (connectionId) {
+            const nangoPublicConnectionId = connectionId
+            console.log("Connection ID received:", nangoPublicConnectionId)
+
+            // Continue with existing connection verification logic
+            let internalIdResult: ActionState<{
+              nangoConnectionTableId: string
+              status: string
+            }> | null = null
+            let success = false
+
+            for (let attempt = 1; attempt <= MAX_FETCH_RETRIES; attempt++) {
+              setStatusMessage(
+                `Verifying connection details (attempt ${attempt}/${MAX_FETCH_RETRIES})...`
+              )
+              console.log(
+                `Attempt ${attempt}: Calling getNangoConnectionByPublicIdAction with public ID: ${nangoPublicConnectionId}`
+              )
+
+              try {
+                internalIdResult = await getNangoConnectionByPublicIdAction(
+                  nangoPublicConnectionId
+                )
+
+                if (
+                  !internalIdResult.isSuccess &&
+                  internalIdResult.message.includes("Authentication")
+                ) {
+                  console.error(
+                    `Authentication error during attempt ${attempt}:`,
+                    internalIdResult.message
+                  )
+                }
+              } catch (internalIdError: any) {
                 console.error(
-                  "Nango 'connect' event did not provide a connectionId."
+                  `Attempt ${attempt}: Error calling getNangoConnectionByPublicIdAction:`,
+                  internalIdError
                 )
-                setError(
-                  "Connection succeeded but failed to get Public ID from Nango UI."
+                internalIdResult = {
+                  isSuccess: false,
+                  message:
+                    "An error occurred while verifying connection details."
+                }
+                break
+              }
+
+              if (
+                internalIdResult.isSuccess &&
+                internalIdResult.data?.nangoConnectionTableId
+              ) {
+                const internalId = internalIdResult.data.nangoConnectionTableId
+                console.log(
+                  `Attempt ${attempt}: Successfully retrieved internal DB ID: ${internalId}`
                 )
-                setIsLoading(false)
+                setNangoConnectionTableId(internalId)
+                success = true
+                break
+              } else {
+                console.warn(
+                  `Attempt ${attempt}: Failed to retrieve internal DB ID: ${internalIdResult.message}`
+                )
+
+                const notFoundMessage =
+                  internalIdResult.message?.toLowerCase() || ""
+                if (
+                  attempt < MAX_FETCH_RETRIES &&
+                  (notFoundMessage.includes("not found") ||
+                    notFoundMessage.includes("processing"))
+                ) {
+                  console.log(
+                    `Waiting ${FETCH_RETRY_DELAY_MS}ms before next attempt...`
+                  )
+                  await delay(FETCH_RETRY_DELAY_MS)
+                } else {
+                  break
+                }
               }
-            } else if (event.type === "close") {
-              console.log("Nango popup closed.")
-              if (!nangoConnectionTableId && !fetchedProperties && !error) {
-                setStatusMessage(null)
-                setIsLoading(false)
-              }
-            } else if (event.type === "error") {
-              console.error("Nango UI Error Event:", event.payload)
+            }
+
+            if (success) {
+              setStatusMessage(
+                "Details verified. Preparing to fetch properties..."
+              )
+              handleFetchProperties(nangoPublicConnectionId)
+            } else {
+              const finalErrorMessage =
+                internalIdResult?.message ||
+                "Failed to verify connection details after multiple attempts."
               console.error(
-                "Detailed Nango UI error:",
-                JSON.stringify(event.payload, null, 2)
+                "Final attempt failed to retrieve internal DB ID:",
+                finalErrorMessage
               )
-              setError(
-                event.payload?.message || "Error during Nango connection."
-              )
+              setError(finalErrorMessage)
+              setStatusMessage(null)
               setIsLoading(false)
             }
+          } else {
+            console.error("No connection ID received from Nango auth")
+            setError("Failed to get connection ID from Nango")
+            setIsLoading(false)
           }
-        })
+        } catch (authError: any) {
+          console.error("Error during Nango auth:", authError)
+          setError(authError.message || "Error during Nango authentication")
+          setIsLoading(false)
+        }
       } else {
         throw new Error(
           result.message || "Failed to initiate Nango connection."
@@ -374,6 +398,7 @@ export default function ConnectNangoButton({
       }
     } catch (err: any) {
       console.error("Error initiating Nango connection:", err)
+
       // Extract more detailed information about the error
       const errorInfo = {
         name: err.name,

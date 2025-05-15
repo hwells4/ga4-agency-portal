@@ -190,14 +190,18 @@ export default function TestNangoConnectClient({
       const sessionToken = initiateResult.data.sessionToken
       console.log("Received session token:", sessionToken)
 
+      // Get environment variables with fallbacks to ensure they're strings
+      const publicKey = process.env.NEXT_PUBLIC_NANGO_PUBLIC_KEY || ""
+      const baseUrl = process.env.NEXT_PUBLIC_NANGO_BASE_URL || ""
+
       console.log("Creating Nango instance with:", {
-        publicKey: process.env.NEXT_PUBLIC_NANGO_PUBLIC_KEY,
-        host: process.env.NEXT_PUBLIC_NANGO_BASE_URL
+        publicKey,
+        host: baseUrl
       })
 
       const nangoFrontend = new Nango({
-        publicKey: process.env.NEXT_PUBLIC_NANGO_PUBLIC_KEY,
-        host: process.env.NEXT_PUBLIC_NANGO_BASE_URL
+        publicKey,
+        host: baseUrl
       })
 
       console.log("Nango instance created successfully")
@@ -208,34 +212,52 @@ export default function TestNangoConnectClient({
       let actualNangoConnectionId: string | null = null
 
       const nangoAuthPromise = new Promise<string>((resolve, reject) => {
-        nangoFrontend.openConnectUI({
-          sessionToken: sessionToken,
-          onEvent: (event: any) => {
-            console.log("Nango UI Event:", event)
-            if (event.type === "connect") {
-              const connectionId = event.payload.connectionId
-              console.log(
-                "Nango connection successful via frontend SDK! Connection ID:",
-                connectionId
-              )
-              actualNangoConnectionId = connectionId
-              if (connectionId !== initialAgencyClientId) {
-                console.warn(
-                  `Received connectionId (${connectionId}) does not match expected initial ID (${initialAgencyClientId}).`
-                )
-              }
-              setMessage(
-                "Nango popup closed. Starting connection verification..."
-              )
-              resolve(connectionId)
-            } else if (event.type === "close") {
-              console.log("Nango popup closed without connect event.")
-            } else if (event.type === "error") {
-              const errorPayload = event.payload
-              console.error("Nango UI Error Event:", errorPayload)
-              reject(new Error(errorPayload?.message || "Nango UI error."))
-            }
+        // Setup window event listener to catch the OAuth callback for v0.36.78
+        const messageHandler = (event: MessageEvent) => {
+          if (event.origin !== process.env.NEXT_PUBLIC_NANGO_BASE_URL) {
+            return // Ignore messages from other origins
           }
+
+          console.log("Received postMessage from Nango:", event.data)
+
+          if (event.data && event.data.type === "nango:auth:success") {
+            const connectionId = event.data.connectionId
+            console.log("Auth success with connectionId:", connectionId)
+            window.removeEventListener("message", messageHandler)
+            actualNangoConnectionId = connectionId
+
+            if (connectionId !== initialAgencyClientId) {
+              console.warn(
+                `Received connectionId (${connectionId}) does not match expected initial ID (${initialAgencyClientId}).`
+              )
+            }
+
+            setMessage(
+              "Nango popup closed. Starting connection verification..."
+            )
+            resolve(connectionId)
+          } else if (event.data && event.data.type === "nango:auth:error") {
+            console.error("Auth error:", event.data.error)
+            window.removeEventListener("message", messageHandler)
+            reject(new Error(event.data.error || "Unknown auth error"))
+          } else if (event.data && event.data.type === "nango:auth:cancel") {
+            console.log("Auth canceled by user")
+            window.removeEventListener("message", messageHandler)
+            reject(new Error("Authentication canceled by user"))
+          }
+        }
+
+        window.addEventListener("message", messageHandler)
+
+        // In v0.36.78, we use auth() instead of openConnectUI
+        const authParams = `sessionToken=${sessionToken}`
+        // For v0.36.78, we must ensure both parameters are strings
+        // We explicitly convert providerConfigKey to a string and use a default empty string
+        const provider =
+          typeof providerConfigKey === "string" ? providerConfigKey : ""
+        nangoFrontend.auth(provider, authParams).catch(error => {
+          window.removeEventListener("message", messageHandler)
+          reject(error)
         })
       })
 
